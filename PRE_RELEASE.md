@@ -1,6 +1,6 @@
-# Private testing
+# Package validation
 
-SubValue is not on npm yet. Test the bundled package; no frontend installation or API key is required.
+The normal installation command is `npx @subvalue/cli`. These instructions validate a locally bundled package independently of the npm registry. No frontend installation or API key is required.
 
 ## Get the package
 

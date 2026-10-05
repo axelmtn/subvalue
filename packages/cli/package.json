@@ -3,5 +3,5 @@
   "type": "module", "license": "MIT", "engines": {"node": ">=24.13.0"},
   "repository": {"type": "git", "url": "git+https://github.com/axelmtn/subvalue.git"},
   "bin": {"subvalue": "dist/cli.js"}, "files": ["dist/", "README.md", "PRE_RELEASE.md", "PRIVACY.md", "LICENSE"],
-  "publishConfig": {"access": "public", "provenance": true}, "scripts": {}
+  "publishConfig": {"access": "public"}, "scripts": {}
 }

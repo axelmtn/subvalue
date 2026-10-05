@@ -64,7 +64,7 @@ export function drawReceipt(canvas:HTMLCanvasElement,model:ReceiptModel):void{
   };
   const line=(y:number)=>{c.strokeStyle='#6c6f754f';c.lineWidth=1;c.setLineDash([4,5]);c.beginPath();c.moveTo(left,y);c.lineTo(right,y);c.stroke();c.setLineDash([]);};
   text(product.name,width/2,64,29,'#f0f0ef','center');text('USAGE RECEIPT',width/2,92,13,'#b6b8bd','center');
-  if(model.demo)text('DEMO / FIXTURE DATA',width/2,112,10,'#a3a5a9','center');
+  if(model.demo)text('EXAMPLE DATA',width/2,112,10,'#a3a5a9','center');
   text('Period',left,137,12.5,'#b4b5b9');text(model.periodDetail,right,137,12.5,'#d0d1d5','right',false,245);
   text('Generated',left,158,12.5,'#b4b5b9');text(model.generated,right,158,12.5,'#d0d1d5','right',false,230);line(180);
   let y=210;

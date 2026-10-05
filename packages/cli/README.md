@@ -2,7 +2,16 @@
 
 Local, read-only Codex and Claude Code API-equivalent usage analysis. No account, API keys, cloud database, AI calls, uploads, or telemetry.
 
-**Private pre-release. Not published to npm.** The future install command is `npx @subvalue/cli`. For testing the locally packed CLI, follow [Private testing](PRE_RELEASE.md).
+## Install
+
+Requires **Node.js 24.13 or newer** on Windows, macOS or Linux.
+
+```sh
+npx @subvalue/cli --dry-run
+npx @subvalue/cli
+```
+
+The source repository is currently private. For optional installation from a local package, see [Package validation](PRE_RELEASE.md).
 
 ## Run locally
 
@@ -105,6 +114,6 @@ npm run build
 npm pack --workspace @subvalue/cli --ignore-scripts --pack-destination artifacts
 ```
 
-Package contents are allowlisted to `dist/`, this README, and LICENSE. No lifecycle/postinstall scripts or runtime dependencies. Local databases, exports, attachments and test artifacts are ignored by Git and excluded from npm contents.
+Package contents are allowlisted to `dist/`, README, PRE_RELEASE, PRIVACY, and LICENSE. No lifecycle/postinstall scripts or runtime dependencies. Local databases, exports, attachments and test artifacts are ignored by Git and excluded from npm contents.
 
-Public npm publishing, GitHub repository creation/push, trusted-publisher configuration and landing deployment require explicit authorization. The release workflow is manual and disabled until `NPM_PUBLISH_ENABLED=true` is configured. It uses a protected environment and npm OIDC provenance, not a permanent npm token. Package-name ownership and repository/landing URLs must be confirmed before release.
+The initial npm release is published manually from the audited package. The GitHub repository stays private. npm does not support provenance for private source repositories; no provenance attestation is claimed for this release. The future release workflow remains disabled until trusted publishing is configured and `NPM_PUBLISH_ENABLED=true` is set. It uses a protected environment and OIDC rather than a permanent npm token.

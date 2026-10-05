@@ -38,7 +38,7 @@ The dashboard server binds only to `127.0.0.1`. Host/origin checks and a per-lau
 
 Installing or updating with npm/npx contacts the package registry. That installation traffic is separate from usage analysis. Following an external documentation link is an explicit browser action.
 
-The public Vercel landing is separate from the local application. It has no usage API, cloud scanner or usage database; its product example is labeled fixture data. No analytics SDK is included. As the website host, Vercel can process ordinary website connection metadata (such as IP address and requested URL); the landing never receives local usage. See [Vercel's privacy policy](https://vercel.com/legal/privacy-policy).
+The public Vercel landing is separate from the local application. It has no usage API, cloud scanner or usage database; its product example is labeled example data. No analytics SDK is included. As the website host, Vercel can process ordinary website connection metadata (such as IP address and requested URL); the landing never receives local usage. See [Vercel's privacy policy](https://vercel.com/legal/privacy-policy).
 
 ## Verification
 
