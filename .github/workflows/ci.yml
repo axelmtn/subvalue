@@ -6,7 +6,7 @@ jobs:
   check:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -19,6 +19,15 @@ jobs:
       - run: npm run build
       - run: npm test
       - run: npx playwright install chromium
-        if: runner.os == 'Linux'
+        if: runner.os != 'Windows'
       - run: npm run test:e2e
       - run: npm pack --workspace @subvalue/cli --ignore-scripts --pack-destination artifacts
+      - name: Test packaged CLI outside checkout
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: |
+          mkdir -p subvalue-package-smoke
+          cd subvalue-package-smoke
+          npx --offline --yes --package "$GITHUB_WORKSPACE/artifacts/subvalue-cli-0.1.0.tgz" subvalue --dry-run
+          npx --offline --yes --package "$GITHUB_WORKSPACE/artifacts/subvalue-cli-0.1.0.tgz" subvalue --scan-only --data-dir ./cache --verbose
+          npx --offline --yes --package "$GITHUB_WORKSPACE/artifacts/subvalue-cli-0.1.0.tgz" subvalue --scan-only --data-dir ./cache --verbose

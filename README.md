@@ -88,6 +88,8 @@ Only development validation requires npm dependencies. Inter and IBM Plex Mono f
 
 Browser validation uses an isolated headless browser with fixture data. Windows uses installed Edge; elsewhere install Playwright Chromium for development. `SUBVALUE_PLAYWRIGHT_MODULE` can reference an already-installed official Playwright module. No personal browser profile is used.
 
+GitHub Actions validates Windows, Linux, and macOS on both Apple Silicon and Intel. Each runner checks types, lint, build, unit/integration tests, responsive browser pages, receipt PNG export, and the locally packed CLI from a temporary directory outside the checkout. The package requires Node.js 24.13 or newer on each platform.
+
 Static landing output is `apps/web/dist`, suitable for a static host including Vercel. It contains no local API server or user data. Its preview is marked as an example. GitHub links remain release placeholders until the repository URL is chosen.
 
 ## Package / release
