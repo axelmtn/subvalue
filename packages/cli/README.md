@@ -1,0 +1,102 @@
+# SubValue
+
+Local, read-only Codex and Claude Code API-equivalent usage analysis. No account, API keys, cloud database, AI calls, uploads, or telemetry.
+
+**MVP preview. Not published to npm or GitHub.** The future install command is `npx @subvalue/cli`.
+
+## Run locally
+
+Requires **Node.js 24.13 or newer**. Runtime and production build have no external dependencies.
+
+```sh
+npm run build
+npm start -- --dry-run
+npm start
+```
+
+The CLI scans both providers, stores normalized metadata in the OS application-data directory (`%LOCALAPPDATA%/SubValue` on Windows, `~/Library/Application Support/SubValue` on macOS, `$XDG_DATA_HOME/subvalue` or `~/.local/share/subvalue` on Linux), binds to `127.0.0.1:4731` (an OS-selected loopback port if occupied), and opens the default browser. It never modifies provider files.
+
+```sh
+npm start -- --no-open
+npm start -- --scan-only
+npm start -- --verbose
+npm run demo
+```
+
+`--demo` is explicitly labeled fixture data, does not scan local providers, and does not create a usage database. `--port` selects the local port. `--dry-run` checks provider-directory metadata only: no session contents, database, or server.
+
+## Interface
+
+- **Overview:** 7D / 30D / Month / Custom, API equivalent, user-declared billing, optional subscription comparison, providers and daily known API value.
+- **Receipt:** local canvas preview and PNG export of the exact same pixels. No projects, paths, requests or sessions in exports.
+- **Settings:** Sources, Billing, USD, Privacy / data. Inactive providers stay here, with optional manual inclusion.
+
+Month compares the full monthly subscription against usage imported so far. Other ranges use calendar-day proration, including multi-month ranges. Amounts and API prices are USD; no invented exchange rates. Billing declarations do not overwrite historical records or prove their original billing mode. Settings offers bundled, verified ChatGPT/Claude plan presets and a custom amount. Annual presets retain the exact annual price divided by 12, with per-seat plans labeled.
+
+## Source access
+
+Only these session inputs are opened by the scanner:
+
+```text
+~/.codex/sessions/**/*.jsonl
+~/.codex/archived_sessions/*.jsonl
+~/.claude/projects/**/*.jsonl
+```
+
+No credentials, auth files, repositories, attachments, clipboard caches, shell history or browser data. The optional Claude stats cache is deliberately not imported in V1 because its history cannot be allocated safely by request/date. Directories referenced by session metadata are never opened. Project identifiers are hashed locally.
+
+Transcripts contain conversation text alongside metadata. They must be streamed to extract usage. Conversation text is transient and is never persisted, logged, sent to the browser, or exported. Codex response records are skipped before JSON deserialization; Claude objects are immediately projected onto the metadata allowlist.
+
+## Accuracy and pricing
+
+`0`, `UNKNOWN`, `NO DATA`, and partial history are distinct. Null fields are never filled with zero. Each record carries provenance, schema, quality and metadata-only source identity. Token completeness and pricing coverage are separate; percentage priced describes **imported records**, not all historical activity.
+
+Codex excludes inherited ordinal prefixes, uses cumulative deltas, suppresses repeated counters, segments counter resets and preserves unallocated totals. Claude deduplicates message/request identities and does not add nested iteration usage. Conflicting duplicates fail closed as incomplete.
+
+The versioned catalog supports mappings with confidence and primary-source provenance, half-open effective intervals, cache reads/writes, Claude cache durations, and long-context bands. Rates and release evidence were checked against [OpenAI pricing](https://developers.openai.com/api/docs/pricing) and [Claude pricing](https://platform.claude.com/docs/en/about-claude/pricing) on **2026-10-05**. Historical versions include the July 30 Luna/Terra reductions and August 21 Sol promotion. Exact public GPT-5.6/6 and Claude identifiers carry mapping provenance; long-context rates use the verified 272k request threshold. New-model launch days use their documented initial API-equivalent rate. Calendar-dated changes between rates remain unknown because their exact UTC switch time is not documented. Sol pricing after the confirmed promotion remains unavailable. See [the pricing evidence ledger](dist/PRICING.md). Internal/unknown model identifiers are never mapped by resemblance.
+
+Overview and receipt display the sum of priceable events; the compact priced percentage identifies partial pricing, and unpriced model identities remain visible in Details. No guessed price or zero is assigned to unknown events. Incomplete pricing suppresses a full-usage comparison in the dashboard. The receipt compares its printed known amount with the declared prorated subscription: You Saved is their difference, and Value Multiple is their ratio. Partial coverage remains printed; these observed values do not infer a certain outcome. Partial retained history allows an explicitly observed comparison when all retained events are priced, but does not generate a certain worth-it conclusion or an exact break-even date. API and mixed billing have no subscription comparison. Totals from several subscriptions cannot include API/mixed providers in a subscription comparison.
+
+## Architecture
+
+```text
+apps/web/                 local UI + static public landing
+packages/core/src/        normalized types, security, scanner, SQLite, summaries
+  providers/codex/        Codex adapter
+  providers/claude/       Claude adapter
+  pricing/                versioned catalog + mapping + calculations
+packages/receipt/         shared receipt model and canvas renderer
+packages/cli/             executable, loopback HTTP server, packaged assets
+tests/                    synthetic parser, pricing, storage and security fixtures
+scripts/                  native build + browser validation
+```
+
+Streaming memory is bounded by a 16 MiB line limit. Checkpoints persist byte offsets, typed parser state, file identity and edge fingerprints, never raw trailing text. Unfinished lines are read again on the next scan. Appended files continue from the checkpoint; changed files are replaced transactionally. Missing sources retain cached history with a missing-file flag. Unchanged files require only small fingerprint checks, not a full stream. Provider-input links and junctions are rejected. Checkpoints cannot prove changes made deliberately while preserving metadata and the edge fingerprints; V1 assumes normally written local logs.
+
+## Development / validation
+
+```sh
+npm test
+npm run build
+npm ci --ignore-scripts --no-audit --no-fund
+npm run typecheck
+npm run lint
+npm run test:e2e
+```
+
+Only development validation requires npm dependencies. Inter and IBM Plex Mono fonts are bundled under their included OFL licenses, with no CDN requests. The native production builder uses Node's TypeScript stripping and produces JavaScript modules, static CSS and assets; no compiler runs at CLI launch. Type stripping is **not** a TypeScript typecheck.
+
+Browser validation uses an isolated headless browser with fixture data. Windows uses installed Edge; elsewhere install Playwright Chromium for development. `SUBVALUE_PLAYWRIGHT_MODULE` can reference an already-installed official Playwright module. No personal browser profile is used.
+
+Static landing output is `apps/web/dist`, suitable for a static host including Vercel. It contains no local API server or user data. Its preview is marked as an example. GitHub links remain release placeholders until the repository URL is chosen.
+
+## Package / release
+
+```sh
+npm run build
+npm pack --workspace @subvalue/cli --ignore-scripts --pack-destination artifacts
+```
+
+Package contents are allowlisted to `dist/`, this README, and LICENSE. No lifecycle/postinstall scripts or runtime dependencies. Local databases, exports, attachments and test artifacts are ignored by Git and excluded from npm contents.
+
+Public npm publishing, GitHub repository creation/push, trusted-publisher configuration and landing deployment require explicit authorization. The release workflow is manual and disabled until `NPM_PUBLISH_ENABLED=true` is configured. It uses a protected environment and npm OIDC provenance, not a permanent npm token. Package-name ownership and repository/landing URLs must be confirmed before release.

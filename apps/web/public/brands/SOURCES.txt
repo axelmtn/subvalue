@@ -1,0 +1,14 @@
+Codex outline product mark: installed official OpenAI.Codex Windows package 26.930.3930.0.
+Archive: app/resources/app.asar; asset: webview/assets/codex_new-f14177b03534.svg.
+Local file: codex-outline.svg. Exact original black SVG, displayed white using CSS inversion; geometry unchanged.
+Product source: https://openai.com/codex/
+
+Claude Code Clawd pixel mascot: installed official Anthropic VS Code extension anthropic.claude-code version 2.1.195, resources/clawd.svg.
+Local file: claude-code-clawd.svg; exact SVG with original #D97757 color.
+Official source: https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code
+
+Unused Claude Code product lockup, ivory: official Anthropic press kit, Anthropic media resources/Anthropic logos/Claude logos/2 Claude Code logo/SVG/Claude Code logo - Ivory.svg.
+Source: https://anthropic.com/press-kit, linked by https://www.anthropic.com/news
+Resolved archive: https://www-cdn.anthropic.com/ae59ca4ca194dac9c9dc3bc78c5829468cb0e8af.zip
+
+Retrieved 2026-10-04. Artwork preserved byte-for-byte. Marks belong to OpenAI and Anthropic respectively; not licensed under the project's MIT license. Used solely to identify providers, without implying endorsement.

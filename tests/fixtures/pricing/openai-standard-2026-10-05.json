@@ -1,0 +1,326 @@
+{
+  "source": "https://developers.openai.com/api/docs/pricing",
+  "verified": "2026-10-05",
+  "rows": [
+    {
+      "model": "gpt-6-astra",
+      "input": 10,
+      "cached": 1,
+      "write": 12.5,
+      "output": 50,
+      "long": false
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "input": 2,
+      "cached": 0.1,
+      "write": 2.5,
+      "output": 10,
+      "long": false
+    },
+    {
+      "model": "gpt-6-luna",
+      "input": 0.1,
+      "cached": 0.01,
+      "write": 0.125,
+      "output": 0.5,
+      "long": false
+    },
+    {
+      "model": "gpt-6-sol",
+      "input": 2,
+      "cached": 0.2,
+      "write": 2.5,
+      "output": 10,
+      "long": false
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "input": 4,
+      "cached": 0.4,
+      "write": 5,
+      "output": 20,
+      "long": false
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "input": 2,
+      "cached": 0.2,
+      "write": 2.5,
+      "output": 12,
+      "long": false
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "input": 0.2,
+      "cached": 0.02,
+      "write": 0.25,
+      "output": 1.2,
+      "long": false
+    },
+    {
+      "model": "gpt-5.5",
+      "input": 5,
+      "cached": 0.5,
+      "write": null,
+      "output": 30,
+      "long": true
+    },
+    {
+      "model": "gpt-5.5-pro",
+      "input": 30,
+      "cached": null,
+      "write": null,
+      "output": 180,
+      "long": true
+    },
+    {
+      "model": "gpt-5.4",
+      "input": 2.5,
+      "cached": 0.25,
+      "write": null,
+      "output": 15,
+      "long": true
+    },
+    {
+      "model": "gpt-5.4-mini",
+      "input": 0.75,
+      "cached": 0.075,
+      "write": null,
+      "output": 4.5,
+      "long": false
+    },
+    {
+      "model": "gpt-5.4-nano",
+      "input": 0.2,
+      "cached": 0.02,
+      "write": null,
+      "output": 1.25,
+      "long": false
+    },
+    {
+      "model": "gpt-5.4-pro",
+      "input": 30,
+      "cached": null,
+      "write": null,
+      "output": 180,
+      "long": true
+    },
+    {
+      "model": "gpt-5.2",
+      "input": 1.75,
+      "cached": 0.175,
+      "write": null,
+      "output": 14,
+      "long": false
+    },
+    {
+      "model": "gpt-5.2-pro",
+      "input": 21,
+      "cached": null,
+      "write": null,
+      "output": 168,
+      "long": false
+    },
+    {
+      "model": "gpt-5.1",
+      "input": 1.25,
+      "cached": 0.125,
+      "write": null,
+      "output": 10,
+      "long": false
+    },
+    {
+      "model": "gpt-5",
+      "input": 1.25,
+      "cached": 0.125,
+      "write": null,
+      "output": 10,
+      "long": false
+    },
+    {
+      "model": "gpt-5-mini",
+      "input": 0.25,
+      "cached": 0.025,
+      "write": null,
+      "output": 2,
+      "long": false
+    },
+    {
+      "model": "gpt-5-nano",
+      "input": 0.05,
+      "cached": 0.005,
+      "write": null,
+      "output": 0.4,
+      "long": false
+    },
+    {
+      "model": "gpt-5-pro",
+      "input": 15,
+      "cached": null,
+      "write": null,
+      "output": 120,
+      "long": false
+    },
+    {
+      "model": "gpt-4.1",
+      "input": 2,
+      "cached": 0.5,
+      "write": null,
+      "output": 8,
+      "long": false
+    },
+    {
+      "model": "gpt-4.1-mini",
+      "input": 0.4,
+      "cached": 0.1,
+      "write": null,
+      "output": 1.6,
+      "long": false
+    },
+    {
+      "model": "gpt-4.1-nano",
+      "input": 0.1,
+      "cached": 0.025,
+      "write": null,
+      "output": 0.4,
+      "long": false
+    },
+    {
+      "model": "gpt-4o",
+      "input": 2.5,
+      "cached": 1.25,
+      "write": null,
+      "output": 10,
+      "long": false
+    },
+    {
+      "model": "gpt-4o-2024-05-13",
+      "input": 5,
+      "cached": null,
+      "write": null,
+      "output": 15,
+      "long": false
+    },
+    {
+      "model": "gpt-4o-mini",
+      "input": 0.15,
+      "cached": 0.075,
+      "write": null,
+      "output": 0.6,
+      "long": false
+    },
+    {
+      "model": "o1",
+      "input": 15,
+      "cached": 7.5,
+      "write": null,
+      "output": 60,
+      "long": false
+    },
+    {
+      "model": "o1-pro",
+      "input": 150,
+      "cached": null,
+      "write": null,
+      "output": 600,
+      "long": false
+    },
+    {
+      "model": "o3-pro",
+      "input": 20,
+      "cached": null,
+      "write": null,
+      "output": 80,
+      "long": false
+    },
+    {
+      "model": "o3",
+      "input": 2,
+      "cached": 0.5,
+      "write": null,
+      "output": 8,
+      "long": false
+    },
+    {
+      "model": "o4-mini",
+      "input": 1.1,
+      "cached": 0.275,
+      "write": null,
+      "output": 4.4,
+      "long": false
+    },
+    {
+      "model": "o3-mini",
+      "input": 1.1,
+      "cached": 0.55,
+      "write": null,
+      "output": 4.4,
+      "long": false
+    },
+    {
+      "model": "gpt-4-turbo-2024-04-09",
+      "input": 10,
+      "cached": null,
+      "write": null,
+      "output": 30,
+      "long": false
+    },
+    {
+      "model": "gpt-4-0613",
+      "input": 30,
+      "cached": null,
+      "write": null,
+      "output": 60,
+      "long": false
+    },
+    {
+      "model": "gpt-3.5-turbo",
+      "input": 0.5,
+      "cached": null,
+      "write": null,
+      "output": 1.5,
+      "long": false
+    },
+    {
+      "model": "gpt-3.5-turbo-0125",
+      "input": 0.5,
+      "cached": null,
+      "write": null,
+      "output": 1.5,
+      "long": false
+    },
+    {
+      "model": "gpt-3.5-turbo-1106",
+      "input": 1,
+      "cached": null,
+      "write": null,
+      "output": 2,
+      "long": false
+    },
+    {
+      "model": "gpt-3.5-turbo-instruct",
+      "input": 1.5,
+      "cached": null,
+      "write": null,
+      "output": 2,
+      "long": false
+    },
+    {
+      "model": "davinci-002",
+      "input": 2,
+      "cached": null,
+      "write": null,
+      "output": 2,
+      "long": false
+    },
+    {
+      "model": "babbage-002",
+      "input": 0.4,
+      "cached": null,
+      "write": null,
+      "output": 0.4,
+      "long": false
+    }
+  ]
+}
