@@ -18,3 +18,26 @@ test('deleted source retains cached usage with explicit missing-files status',as
 test('database and SQLite sidecar junctions cannot redirect storage',()=>{const f=fixture();try{const outside=path.join(f.home,'outside');fs.mkdirSync(outside);for(const suffix of ['', '-wal','-shm','-journal']){const directory=path.join(f.home,'linked-db'+(suffix||'-main'));fs.mkdirSync(directory);fs.symlinkSync(outside,path.join(directory,'subvalue.sqlite'+suffix),process.platform==='win32'?'junction':'dir');assert.throws(()=>new Store(directory,f.home),/links/);}}finally{f.store.close();}});
 test('an empty source creates a safe checkpoint without opening a stream',async()=>{const f=fixture();try{fs.writeFileSync(f.codex,'');await scan(f.store,{home:f.home});assert.equal(f.store.records().length,0);assert.equal(f.store.allCheckpoints()[0].offset,0);assert.equal(f.store.statuses()[0].errors,0);}finally{f.store.close();}});
 test('observed source content opens are restricted to approved JSONL files',async()=>{const f=fixture();const original=fs.openSync;const opened:string[]=[];try{fs.writeFileSync(f.codex,jsonl([meta(),context(),codexEvent(counts())]));fs.writeFileSync(f.claude,jsonl([claudeEvent()]));fs.writeFileSync(path.join(f.home,'.codex','auth.json'),'CREDENTIAL_SENTINEL');fs.writeFileSync(path.join(f.home,'.claude','projects','fixture','.env'),'ENV_SENTINEL');fs.openSync=((file:any,...args:any[])=>{opened.push(String(file));return (original as any)(file,...args);}) as typeof fs.openSync;const result=await scan(f.store,{home:f.home});assert.deepEqual(new Set(opened),new Set([f.codex,f.claude]));assert.equal(result.reduce((n,s)=>n+s.errors,0),0);}finally{fs.openSync=original;f.store.close();}});
+
+test('persistent metadata omits unnecessary identities and projects while preserving duplicate checks',async()=>{
+  const f=fixture();try{
+    fs.writeFileSync(f.codex,jsonl([meta(),context(),codexEvent(counts())]));fs.writeFileSync(f.claude,jsonl([claudeEvent(),claudeEvent()]));await scan(f.store,{home:f.home});
+    const records=f.store.records();assert.equal(records.length,2);
+    for(const record of records){assert.equal(record.session_id,null);assert.equal(record.thread_id,null);assert.equal(record.project_identifier_hash,null);}
+    const claude=records.find(record=>record.provider==='claude')!;assert.match(claude.request_id!,/^svh:[a-f0-9]{64}$/);
+    const checkpoints=f.store.allCheckpoints();for(const checkpoint of checkpoints){assert.ok(!JSON.stringify(checkpoint).includes('private-fixture'));if(checkpoint.state.thread!==undefined){assert.equal(checkpoint.state.session,null);assert.equal(checkpoint.state.project,null);assert.equal(checkpoint.state.turn,null);}}
+    fs.appendFileSync(f.claude,jsonl([claudeEvent(),claudeEvent({}, {output_tokens:30})]));await scan(f.store,{home:f.home});assert.equal(f.store.records().length,2);assert.equal(f.store.records().find(record=>record.provider==='claude')!.quality,'INCOMPLETE');
+  }finally{f.store.close();}
+});
+
+test('legacy metadata migration preserves event keys, counters and incremental checkpoints',async()=>{
+  const f=fixture();let store=f.store;try{
+    fs.writeFileSync(f.codex,jsonl([meta(),context(),codexEvent(counts())]));fs.writeFileSync(f.claude,jsonl([claudeEvent()]));await scan(store,{home:f.home});
+    const before=store.records();for(const record of before){const legacy={...record,session_id:'LEGACY_SESSION',thread_id:'LEGACY_THREAD',project_identifier_hash:'LEGACY_PROJECT',request_id:record.provider==='claude'?'req-a':null,unexpected:'PRIVATE_CONTENT_SENTINEL'};store.db.prepare('UPDATE records SET data=? WHERE id=?').run(JSON.stringify(legacy),record.id);}
+    const checkpoints=store.allCheckpoints();for(const checkpoint of checkpoints){const legacy={...checkpoint,state:{...checkpoint.state,project:'LEGACY_PROJECT',session:'LEGACY_SESSION',turn:'LEGACY_TURN',unexpected:'PRIVATE_CONTENT_SENTINEL'}};store.db.prepare('UPDATE sources SET checkpoint=? WHERE ref=?').run(JSON.stringify(legacy),checkpoint.ref);}
+    store.db.prepare("DELETE FROM app WHERE key='privacyMetadataVersion'").run();store.close();store=new Store(path.join(f.home,'subvalue-data'),f.home);
+    const migrated=store.records();assert.deepEqual(migrated.map(record=>record.id),before.map(record=>record.id));assert.deepEqual(migrated.map(record=>record.total_tokens),before.map(record=>record.total_tokens));assert.ok(!JSON.stringify([migrated,store.allCheckpoints()]).includes('LEGACY_'));assert.ok(!JSON.stringify([migrated,store.allCheckpoints()]).includes('PRIVATE_CONTENT_SENTINEL'));
+    let bytes=-1;await scan(store,{home:f.home,onProgress:progress=>{bytes=progress.bytes;}});assert.equal(bytes,0,'Migration never re-reads the histories');assert.deepEqual(store.allCheckpoints().map(checkpoint=>checkpoint.offset),checkpoints.map(checkpoint=>checkpoint.offset));
+    fs.appendFileSync(f.codex,jsonl([codexEvent(counts(150,30,20,8),counts(50,10,10,4),3)]));fs.appendFileSync(f.claude,jsonl([claudeEvent()]));await scan(store,{home:f.home});assert.equal(store.records().length,3);assert.equal(store.records().filter(record=>record.provider==='codex').reduce((n,record)=>n+record.input_tokens!,0),150);
+  }finally{store.close();}
+});

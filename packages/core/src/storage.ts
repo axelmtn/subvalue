@@ -2,8 +2,25 @@ import {DatabaseSync} from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import {applicationDirectory} from './security.ts';
-import {defaultSettings,type Settings,type UsageRecord,type SourceStatus} from './types.ts';
+import {baseRecord,hash} from './metadata.ts';
+import {defaultSettings,emptyDiagnostics,type Settings,type UsageRecord,type SourceStatus} from './types.ts';
 export interface Checkpoint {ref:string;size:number;mtime:number;offset:number;line:number;head:string;tail:string;state:any;identity:string}
+function privateRecord(record:UsageRecord):UsageRecord{
+  const result=baseRecord(record.provider,'','');
+  for(const key of Object.keys(result) as (keyof UsageRecord)[])if(Object.hasOwn(record,key))(result as any)[key]=record[key];
+  // These identities and project associations are not used by the V1 dashboard.
+  result.session_id=null;result.thread_id=null;result.project_identifier_hash=null;
+  const request=result.request_id;result.request_id=request===null?null:/^svh:[a-f0-9]{64}$/.test(request)?request:'svh:'+hash('request',request);
+  return result;
+}
+function privateCheckpoint(checkpoint:Checkpoint):Checkpoint{
+  const state=checkpoint.state;const diagnostics=emptyDiagnostics();
+  for(const key of Object.keys(diagnostics) as (keyof typeof diagnostics)[])if(Object.hasOwn(state.diagnostics,key))(diagnostics as any)[key]=state.diagnostics[key];
+  // Codex's thread identity is needed to preserve its existing deduplication keys.
+  // Other identities/project fields are unnecessary for incremental token counters.
+  const next=state.thread!==undefined?{thread:state.thread,session:null,model:state.model,project:null,boundary:state.boundary,previous:state.previous===null?null:Object.fromEntries(['input_tokens','cached_input_tokens','cache_write_input_tokens','output_tokens','reasoning_output_tokens','total_tokens'].map(key=>[key,state.previous[key]??null])),turn:null,segment:state.segment,diagnostics}:{diagnostics};
+  return {ref:checkpoint.ref,size:checkpoint.size,mtime:checkpoint.mtime,offset:checkpoint.offset,line:checkpoint.line,head:checkpoint.head,tail:checkpoint.tail,state:next,identity:checkpoint.identity};
+}
 export class Store {
   db:DatabaseSync;
   constructor(directory:string,home?:string){const safe=applicationDirectory(directory,home);fs.mkdirSync(safe,{recursive:true,mode:0o700});const target=path.join(safe,'subvalue.sqlite');for(const file of [target,target+'-wal',target+'-shm',target+'-journal']){try{if(fs.lstatSync(file).isSymbolicLink())throw new Error('Database links are not allowed');}catch(e){if((e as NodeJS.ErrnoException).code!=='ENOENT')throw e;}}this.db=new DatabaseSync(target);this.db.exec(`
@@ -14,11 +31,18 @@ export class Store {
     CREATE TABLE IF NOT EXISTS source_records(ref TEXT NOT NULL,id TEXT NOT NULL,PRIMARY KEY(ref,id));
     CREATE TABLE IF NOT EXISTS app(key TEXT PRIMARY KEY,data TEXT NOT NULL);
     PRAGMA user_version=1;
-  `);try{fs.chmodSync(target,0o600);}catch{/* Windows ACLs inherit from the user directory. */}}
+  `);try{fs.chmodSync(target,0o600);}catch{/* Windows ACLs inherit from the user directory. */}
+    if(this.get('privacyMetadataVersion')!==1){this.db.exec('BEGIN IMMEDIATE');try{
+      for(const row of this.db.prepare('SELECT id,data FROM records').iterate())this.db.prepare('UPDATE records SET data=? WHERE id=?').run(JSON.stringify(privateRecord(JSON.parse(String(row.data)))),row.id!);
+      for(const checkpoint of this.allCheckpoints())this.saveCheckpoint(checkpoint);
+      this.save('privacyMetadataVersion',1);this.db.exec('COMMIT');
+    }catch(error){this.db.exec('ROLLBACK');this.db.close();throw error;}}
+  }
   checkpoint(ref:string):Checkpoint|null{const r=this.db.prepare('SELECT checkpoint FROM sources WHERE ref=?').get(ref);return r?JSON.parse(String(r.checkpoint)):null;}
-  saveCheckpoint(c:Checkpoint){this.db.prepare('INSERT OR REPLACE INTO sources VALUES (?,?)').run(c.ref,JSON.stringify(c));}
+  saveCheckpoint(c:Checkpoint){this.db.prepare('INSERT OR REPLACE INTO sources VALUES (?,?)').run(c.ref,JSON.stringify(privateCheckpoint(c)));}
   clearSource(ref:string){this.db.prepare('DELETE FROM source_records WHERE ref=?').run(ref);this.db.prepare('DELETE FROM sources WHERE ref=?').run(ref);}
   put(r:UsageRecord,ref:string):'new'|'duplicate'|'conflict'{
+    r=privateRecord(r);
     const old=this.db.prepare('SELECT data FROM records WHERE id=?').get(r.id);let result:'new'|'duplicate'|'conflict'='new';
     if(old){const prev=JSON.parse(String(old.data)) as UsageRecord;const usageKeys=['input_tokens','cached_input_tokens','cache_creation_tokens','cache_creation_5m_tokens','cache_creation_1h_tokens','output_tokens','reasoning_tokens','model_raw','request_id','total_tokens'] as const;
       const different=usageKeys.some(k=>prev[k]!==r[k]);result=different?'conflict':'duplicate';
