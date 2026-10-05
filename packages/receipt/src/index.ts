@@ -1,8 +1,14 @@
-import type {Summary} from '../../core/src/summary.ts';
+import type {Summary,Comparison} from '../../core/src/summary.ts';
 import {product} from '../../ui/src/brand.ts';
 export interface ReceiptRow {left:string;right:string;accent?:'positive'|'negative';strong?:boolean}
 export interface ReceiptModel {period:string;periodDetail:string;generated:string;rows:ReceiptRow[];outcome:string;confidence:string;demo:boolean}
 export const money=(n:number|null,signed=false):string=>n===null?'Unavailable':`${signed&&n>=0?'+':''}${new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(n)}`;
+/** Compare only the displayed priced amount; preserve uncertainty and billing eligibility. */
+export function comparisonForDisplay(s:Summary):Comparison{
+  const comparison=s.total.comparison,amount=s.total.apiEquivalent??s.total.knownSubtotal;
+  if(amount===null||comparison.subscription===null)return comparison;
+  return {...comparison,value:comparison.value??amount-comparison.subscription,roi:comparison.roi??(comparison.subscription>0?amount/comparison.subscription:null)};
+}
 export function receiptModel(s:Summary,generatedAt=new Date()):ReceiptModel{
   const rows:ReceiptRow[]=[];
   for(const p of s.providers.filter(p=>p.records>0&&p.visible!==false)){
@@ -16,12 +22,12 @@ export function receiptModel(s:Summary,generatedAt=new Date()):ReceiptModel{
   }
   const amount=s.total.apiEquivalent??s.total.knownSubtotal;
   rows.push({left:'Total API Equivalent',right:amount===null?'—':money(amount),strong:true});
-  const comp=s.total.comparison;if(comp.subscription!==null)rows.push({left:'Subscription Cost',right:money(comp.subscription)});
-  const value=comp.value??(amount!==null&&comp.subscription!==null?amount-comp.subscription:null);
+  const comp=comparisonForDisplay(s);if(comp.subscription!==null)rows.push({left:'Subscription Cost',right:money(comp.subscription)});
+  const value=comp.value;
   if(value!==null)rows.push({left:'You Saved',right:money(value,true),accent:value>=0?'positive':'negative',strong:true});
   // With partial pricing, compare only the printed known amount to the declared
   // prorated subscription. The coverage footer stays visible; no outcome is inferred.
-  const multiple=comp.roi??(amount!==null&&comp.subscription!==null&&comp.subscription>0?amount/comp.subscription:null);
+  const multiple=comp.roi;
   if(multiple!==null)rows.push({left:'',right:''},{left:'VALUE MULTIPLE',right:`${multiple.toFixed(2)}×`,accent:multiple>=1?'positive':'negative',strong:true});
   if(comp.breakEven)rows.push({left:'BREAK-EVEN',right:new Date(comp.breakEven+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}).toUpperCase()});
   const outcome=comp.outcome==='positive'?'YOUR PLAN WAS WORTH IT':comp.outcome==='negative'?'API WOULD HAVE BEEN CHEAPER':'';

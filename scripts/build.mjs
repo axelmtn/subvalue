@@ -28,7 +28,7 @@ for(const relative of ['apps/web/src/main.js','packages/core/src/subscriptions.j
   if(fs.existsSync(destination)&&!fs.lstatSync(destination).isSymbolicLink())fs.unlinkSync(destination);
 }
 fs.writeFileSync('apps/web/dist/index.html',fs.readFileSync('apps/web/landing.html','utf8').replaceAll('{{productName}}',product.name));
-for(const name of ['README.md','LICENSE'])if(fs.existsSync(name))fs.copyFileSync(name,path.join('packages/cli',name));
+for(const name of ['README.md','PRE_RELEASE.md','LICENSE'])if(fs.existsSync(name))fs.copyFileSync(name,path.join('packages/cli',name));
 fs.copyFileSync('packages/core/src/pricing/SOURCES.md',path.join(output,'PRICING.md'));
 fs.writeFileSync('packages/cli/README.md',fs.readFileSync('README.md','utf8').replace('packages/core/src/pricing/SOURCES.md','dist/PRICING.md'));
 fs.chmodSync(path.join(output,'cli.js'),0o755);console.log('Built CLI, local dashboard, and static landing.');

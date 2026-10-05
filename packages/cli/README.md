@@ -2,7 +2,7 @@
 
 Local, read-only Codex and Claude Code API-equivalent usage analysis. No account, API keys, cloud database, AI calls, uploads, or telemetry.
 
-**MVP preview. Not published to npm or GitHub.** The future install command is `npx @subvalue/cli`.
+**Private pre-release. Not published to npm.** The future install command is `npx @subvalue/cli`. For testing the locally packed CLI, follow [Private testing](PRE_RELEASE.md).
 
 ## Run locally
 
@@ -55,7 +55,7 @@ Codex excludes inherited ordinal prefixes, uses cumulative deltas, suppresses re
 
 The versioned catalog supports mappings with confidence and primary-source provenance, half-open effective intervals, cache reads/writes, Claude cache durations, and long-context bands. Rates and release evidence were checked against [OpenAI pricing](https://developers.openai.com/api/docs/pricing) and [Claude pricing](https://platform.claude.com/docs/en/about-claude/pricing) on **2026-10-05**. Historical versions include the July 30 Luna/Terra reductions and August 21 Sol promotion. Exact public GPT-5.6/6 and Claude identifiers carry mapping provenance; long-context rates use the verified 272k request threshold. New-model launch days use their documented initial API-equivalent rate. Calendar-dated changes between rates remain unknown because their exact UTC switch time is not documented. Sol pricing after the confirmed promotion remains unavailable. See [the pricing evidence ledger](dist/PRICING.md). Internal/unknown model identifiers are never mapped by resemblance.
 
-Overview and receipt display the sum of priceable events; the compact priced percentage identifies partial pricing, and unpriced model identities remain visible in Details. No guessed price or zero is assigned to unknown events. Incomplete pricing suppresses a full-usage comparison in the dashboard. The receipt compares its printed known amount with the declared prorated subscription: You Saved is their difference, and Value Multiple is their ratio. Partial coverage remains printed; these observed values do not infer a certain outcome. Partial retained history allows an explicitly observed comparison when all retained events are priced, but does not generate a certain worth-it conclusion or an exact break-even date. API and mixed billing have no subscription comparison. Totals from several subscriptions cannot include API/mixed providers in a subscription comparison.
+Overview and receipt display the sum of priceable events; the compact priced percentage identifies partial pricing, and unpriced model identities remain visible in Details. No guessed price or zero is assigned to unknown events. Both views share a display comparison of the known priced amount with the declared prorated subscription: Observed Value / You Saved is their difference, and Value Multiple is their ratio. The normalized summary still marks the full-usage cost and comparison unknown when pricing is incomplete. Partial coverage remains visible; these observed values do not infer a certain outcome or an exact break-even date. API and mixed billing have no subscription comparison. Totals from several subscriptions cannot include API/mixed providers in a subscription comparison.
 
 ## Architecture
 
@@ -88,7 +88,9 @@ Only development validation requires npm dependencies. Inter and IBM Plex Mono f
 
 Browser validation uses an isolated headless browser with fixture data. Windows uses installed Edge; elsewhere install Playwright Chromium for development. `SUBVALUE_PLAYWRIGHT_MODULE` can reference an already-installed official Playwright module. No personal browser profile is used.
 
-Static landing output is `apps/web/dist`, suitable for a static host including Vercel. It contains no local API server or user data. Its preview is marked as an example. GitHub links remain release placeholders until the repository URL is chosen.
+GitHub Actions validates Windows, Linux, and macOS on both Apple Silicon and Intel. Each runner checks types, lint, build, unit/integration tests, responsive browser pages, receipt PNG export, and the locally packed CLI from a temporary directory outside the checkout. The package requires Node.js 24.13 or newer on each platform.
+
+Static landing output is `apps/web/dist`, suitable for a static host including Vercel. It contains no local API server or user data. Its preview is marked as an example. Public GitHub links remain release placeholders while the repository is private.
 
 ## Package / release
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {receiptModel} from '../packages/receipt/src/index.ts';
+import {receiptModel,comparisonForDisplay,money} from '../packages/receipt/src/index.ts';
 import {summarize} from '../packages/core/src/summary.ts';
 import {defaultSettings} from '../packages/core/src/types.ts';
 import {record,prices,statuses} from './helpers.ts';
@@ -49,6 +49,31 @@ test('partial receipt prints a multiplier of its known amount and prorated subsc
   assert.equal(receipt.rows.find(r=>r.left==='VALUE MULTIPLE')?.right,expected.toFixed(2)+'×');
   assert.equal(receipt.rows.find(r=>r.left==='You Saved')?.right.startsWith('+$'),true);
   assert.match(receipt.confidence,/50% priced/);assert.equal(receipt.outcome,'');
+});
+
+test('Overview and receipt share the observed comparison without pricing unknown events',()=>{
+  const settings=defaultSettings();settings.billing.codex={mode:'SUBSCRIPTION',monthly:100};
+  const summary=summarize([record('codex',{id:'priced',input_tokens:0,cached_input_tokens:0,output_tokens:28742000,total_tokens:28742000}),record('codex',{id:'review',model_raw:'codex-auto-review'})],statuses(),settings,range,prices());
+  const display=comparisonForDisplay(summary),receipt=receiptModel(summary);
+  assert.equal(summary.total.apiEquivalent,null);assert.equal(summary.total.comparison.roi,null);assert.equal(summary.total.comparison.value,null);
+  assert.equal(display.value,summary.total.knownSubtotal!-display.subscription!);
+  assert.equal(display.roi,summary.total.knownSubtotal!/display.subscription!);
+  assert.equal(receipt.rows.find(r=>r.left==='You Saved')?.right,money(display.value,true));
+  assert.equal(receipt.rows.find(r=>r.left==='VALUE MULTIPLE')?.right,display.roi!.toFixed(2)+'×');
+  assert.equal(display.outcome,'neutral');assert.equal(display.breakEven,null);assert.match(receipt.confidence,/50% priced/);
+});
+
+test('observed comparison preserves unknown amounts and ineligible billing modes',()=>{
+  const settings=defaultSettings();settings.billing.codex={mode:'SUBSCRIPTION',monthly:100};
+  for(const rows of [[],[record('codex',{model_raw:'codex-auto-review'})]]){
+    const summary=summarize(rows,statuses(),settings,range,prices());const display=comparisonForDisplay(summary);
+    assert.equal(display.value,null);assert.equal(display.roi,null);
+  }
+  for(const mode of ['API','MIXED','UNKNOWN'] as const){
+    settings.billing.codex={mode,monthly:null};
+    const display=comparisonForDisplay(summarize([record()],statuses(),settings,range,prices()));
+    assert.equal(display.subscription,null);assert.equal(display.value,null);assert.equal(display.roi,null);
+  }
 });
 
 test('receipt multiplier needs a known amount and a positive subscription for all active providers',()=>{
