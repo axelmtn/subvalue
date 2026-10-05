@@ -23,7 +23,8 @@ The first command checks detection without reading session contents. The second 
 2. Enter your billing mode and subscription amount when needed. They are declarations, never inferred from credentials.
 3. Check Overview, 7D/30D/Month, Receipt and Settings. Pricing coverage describes imported usage, not every request ever made.
 4. Export PNG. Check readable amounts and the absence of project names, paths, prompts and session IDs.
-5. Stop the CLI with Ctrl+C. Relaunch the same command. Unchanged files should reuse the persistent cache.
+5. Use **Refresh usage** at the top of Overview after new activity. It updates local metadata without restarting the app. Period controls only filter cached data.
+6. Stop the CLI with Ctrl+C. Relaunch the same command. Unchanged files should reuse the persistent cache.
 
 For scan timings and cache counts:
 

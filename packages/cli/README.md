@@ -75,6 +75,10 @@ Streaming memory is bounded by a 16 MiB line limit. Checkpoints persist byte off
 
 ## Development / validation
 
+Usage refreshes incrementally at each normal CLI launch. While the dashboard is open, use **Refresh usage** on Overview or in Settings. Period controls only filter the imported cache; they do not scan source logs. The local application must still be running.
+
+Agents with a terminal on the user's machine can run the same CLI with Node.js 24.13+ and permission to read the approved usage roots and write SubValue's local metadata directory. Use `--scan-only --verbose` to update the cache and exit, or `--no-open` to serve the dashboard without opening a browser. This is CLI interoperability, not a dedicated MCP integration. Only Codex and Claude Code source logs are supported; Hermes or other agents can launch the CLI, but their own usage formats are not imported.
+
 ```sh
 npm test
 npm run build
