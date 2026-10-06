@@ -40,6 +40,8 @@ npm run demo
 - **Receipt:** local canvas preview and PNG export of the exact same pixels. No projects, paths, requests or sessions in exports.
 - **Settings:** Sources, Billing, USD, Privacy / data. Inactive providers stay here, with optional manual inclusion.
 
+First run shows detected history, then asks how each provider was used before rendering results. Subscription users can select a plan or enter a custom USD amount. API, mixed usage and an explicit “Set up later” choice never imply a subscription.
+
 Month compares the full monthly subscription against usage imported so far. Other ranges use calendar-day proration, including multi-month ranges. Amounts and API prices are USD; no invented exchange rates. Billing declarations do not overwrite historical records or prove their original billing mode. Settings offers bundled, verified ChatGPT/Claude plan presets and a custom amount. Annual presets retain the exact annual price divided by 12, with per-seat plans labeled.
 
 ## Source access
@@ -52,9 +54,9 @@ Only these session inputs are opened by the scanner:
 ~/.claude/projects/**/*.jsonl
 ```
 
-No credentials, auth files, repositories, attachments, clipboard caches, shell history or browser data. The optional Claude stats cache is deliberately not imported in V1 because its history cannot be allocated safely by request/date. Directories referenced by session metadata are never opened. Project identifiers are hashed locally.
+No credentials, auth files, repositories, attachments, clipboard caches, shell history or browser data. The optional Claude stats cache is deliberately not imported in V1 because its history cannot be allocated safely by request/date. Directories referenced by session metadata are never opened. Project-path values are skipped by the metadata extractor.
 
-Transcripts contain conversation text alongside metadata. They must be streamed to extract usage. Conversation text is transient and is never persisted, logged, sent to the browser, or exported. Codex response records are skipped before JSON deserialization; Claude objects are immediately projected onto the metadata allowlist.
+Transcripts contain conversation text alongside metadata, so their bytes must be streamed to locate usage fields. A metadata-only JSON extractor decodes approved counters, dates, models and necessary deduplication fields for both providers. Prompt, response, instruction and tool-content values are skipped without constructing their strings or objects. Raw buffers are discarded after each line. No conversation content is persisted, logged, sent to the browser, or exported.
 
 ## Accuracy and pricing
 

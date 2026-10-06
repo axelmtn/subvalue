@@ -27,7 +27,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: subvalue-cli-${{ github.sha }}
-          path: artifacts/subvalue-cli-0.1.0.tgz
+          path: artifacts/subvalue-cli-*.tgz
           if-no-files-found: error
           retention-days: 14
       - name: Test packaged CLI outside checkout
@@ -36,6 +36,8 @@ jobs:
         run: |
           mkdir -p subvalue-package-smoke
           cd subvalue-package-smoke
-          npx --offline --yes --package "$GITHUB_WORKSPACE/artifacts/subvalue-cli-0.1.0.tgz" subvalue --dry-run
-          npx --offline --yes --package "$GITHUB_WORKSPACE/artifacts/subvalue-cli-0.1.0.tgz" subvalue --scan-only --data-dir ./cache --verbose
-          npx --offline --yes --package "$GITHUB_WORKSPACE/artifacts/subvalue-cli-0.1.0.tgz" subvalue --scan-only --data-dir ./cache --verbose
+          SUBVALUE_PACKAGE=("$GITHUB_WORKSPACE"/artifacts/subvalue-cli-*.tgz)
+          test "${#SUBVALUE_PACKAGE[@]}" -eq 1
+          npx --offline --yes --package "${SUBVALUE_PACKAGE[0]}" subvalue --dry-run
+          npx --offline --yes --package "${SUBVALUE_PACKAGE[0]}" subvalue --scan-only --data-dir ./cache --verbose
+          npx --offline --yes --package "${SUBVALUE_PACKAGE[0]}" subvalue --scan-only --data-dir ./cache --verbose

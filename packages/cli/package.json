@@ -1,5 +1,5 @@
 {
-  "name": "@subvalue/cli", "version": "0.1.0", "description": "Local, read-only Codex and Claude Code API-equivalent usage dashboard",
+  "name": "@subvalue/cli", "version": "0.1.1", "description": "Local, read-only Codex and Claude Code API-equivalent usage dashboard",
   "type": "module", "license": "MIT", "engines": {"node": ">=24.13.0"},
   "repository": {"type": "git", "url": "git+https://github.com/axelmtn/subvalue.git"},
   "bin": {"subvalue": "dist/cli.js"}, "files": ["dist/", "README.md", "PRE_RELEASE.md", "PRIVACY.md", "LICENSE"],

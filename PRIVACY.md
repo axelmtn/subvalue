@@ -12,7 +12,7 @@ Only these provider sources are opened for usage analysis:
 
 The CLI also reads its own bundled assets and its own local application database. It checks source-directory/file metadata to detect providers and changes. It does not open credentials, `.env` files, shell history, browser profiles, repositories or project paths mentioned by a session. Symlinks and junctions are rejected. `--dry-run` detects directories without opening session contents.
 
-Session files colocate counters and conversation text. Complete JSONL lines can therefore pass through memory during a scan; only approved metadata is projected into storage. Prompts, responses, attachments and source code are never persisted or displayed.
+Session files colocate counters and conversation text. Their bytes must therefore pass through memory during a scan. A metadata-only JSON extractor decodes whitelisted token counters, model identifiers, timestamps and required deduplication fields. It skips conversation, instruction, attachment and tool-content values without constructing their text strings or objects. Skipped JSON is checked for valid syntax; raw line buffers are discarded after processing. Prompts, responses, attachments and source code are never persisted or displayed.
 
 ## Local metadata retained
 
