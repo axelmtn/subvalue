@@ -2,3 +2,9 @@
 @font-face{font-family:Inter;font-style:normal;font-weight:100 900;font-display:block;src:url('/fonts/inter-latin.woff2') format('woff2')}
 @font-face{font-family:'Plex Mono';font-style:normal;font-weight:400 700;font-display:block;src:url('/fonts/plex-mono.woff2') format('woff2')}
 .brand-name{color:#eff0f1;font-family:Inter,sans-serif;font-weight:800;letter-spacing:-.055em;font-kerning:normal;font-optical-sizing:auto}.brand-name-accent{color:#37ec85}
+/* Static metal highlights stay inside the lettering; solid colors are the fallback. */
+@supports ((background-clip:text) or (-webkit-background-clip:text)){
+  .brand-name{background:linear-gradient(180deg,#fff 5%,#e5ebf1 29%,#9aa8b6 45%,#6c7b88 49%,#f5f8fb 53%,#fff 65%,#a8b4be 95%);background-clip:text;-webkit-background-clip:text;color:transparent;-webkit-text-fill-color:transparent}
+  .brand-name-accent{background:linear-gradient(180deg,#c7ffdd 5%,#66ffa4 29%,#28d975 45%,#168746 49%,#b5ffd3 53%,#64ffa3 65%,#21c86a 95%);background-clip:text;-webkit-background-clip:text;color:transparent;-webkit-text-fill-color:transparent}
+}
+@media(forced-colors:active){.brand-name,.brand-name-accent{background:none;color:CanvasText;-webkit-text-fill-color:CanvasText}}
