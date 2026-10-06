@@ -13,10 +13,15 @@ compile('packages/core/src/subscriptions.ts',path.join(output,'public','packages
 fs.writeFileSync(path.join(output,'cli.js'),'#!/usr/bin/env node\nimport "./packages/cli/src/index.js";\n');
 function css(file){return fs.readFileSync(file,'utf8').replace(/@import ['"](.+?)['"];?/g,(_,relative)=>css(path.resolve(path.dirname(file),relative)));}
 for(const [name,source] of [['app','style'],['landing','landing']]){fs.writeFileSync(path.join(output,'public',`${name}.css`),css(`apps/web/src/${source}.css`));fs.writeFileSync(path.join(output,'public',`${name}.js`),`import './apps/web/src/${name==='app'?'main':'landing'}.js';\n`);}
-const {product}=await import('../'+output+'/packages/ui/src/brand.js');
+const {product,productNameMarkup,wordmarkSvg}=await import('../'+output+'/packages/ui/src/brand.js');
 for(const [src,name] of [['apps/web/index.html','index.html'],['apps/web/landing.html','landing.html']])fs.writeFileSync(path.join(output,'public',name),fs.readFileSync(src,'utf8').replaceAll('{{productName}}',product.name));
 fs.cpSync('apps/web/public',path.join(output,'public'),{recursive:true});
 fs.cpSync('apps/web/public','apps/web/dist',{recursive:true});
+const wordmark=wordmarkSvg(),monochrome=wordmarkSvg(true);
+for(const directory of [path.join(output,'public'),'apps/web/dist']){
+  if(wordmark)fs.writeFileSync(path.join(directory,'logo','wordmark.svg'),wordmark.replaceAll('class="brand-name-accent"','fill="#37ec85"').replace('fill="currentColor"','fill="#eef2f4"'));
+  if(monochrome)fs.writeFileSync(path.join(directory,'logo','wordmark-monochrome.svg'),monochrome);
+}
 for(const name of ['landing.js','landing.css','icon.svg'])fs.copyFileSync(path.join(output,'public',name),path.join('apps/web/dist',name));
 // Only the landing's modules are shipped to the public site. No dashboard entry
 // point, provider scanner, database code or local API is part of this output.
@@ -31,7 +36,7 @@ for(const relative of ['apps/web/src/main.js','packages/core/src/subscriptions.j
 fs.writeFileSync('apps/web/dist/index.html',fs.readFileSync('apps/web/landing.html','utf8').replaceAll('{{productName}}',product.name));
 for(const directory of [path.join(output,'public'),'apps/web/dist']){
   fs.copyFileSync('PRIVACY.md',path.join(directory,'privacy.txt'));
-  fs.writeFileSync(path.join(directory,'privacy.html'),privacyPage(fs.readFileSync('PRIVACY.md','utf8'),product));
+  fs.writeFileSync(path.join(directory,'privacy.html'),privacyPage(fs.readFileSync('PRIVACY.md','utf8'),product,productNameMarkup));
   fs.writeFileSync(path.join(directory,'privacy.css'),css('apps/web/src/privacy.css'));
 }
 for(const name of ['README.md','PRE_RELEASE.md','PRIVACY.md','LICENSE'])if(fs.existsSync(name))fs.copyFileSync(name,path.join('packages/cli',name));
