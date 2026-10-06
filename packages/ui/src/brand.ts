@@ -13,7 +13,7 @@ const glyphs:Record<string,string[]> = {
   L:['1000','1000','1000','1000','1000','1000','1111'],
   E:['11111','10000','10000','11110','10000','10000','11111']
 };
-export function wordmarkSvg(monochrome=false):string|null{
+export function wordmarkSvg(monochrome=false,withCursor=false):string|null{
   const letters=[...product.name.toUpperCase()];
   if(!letters.length||letters.some(letter=>!glyphs[letter]))return null;
   const accentStart=nameParts.slice(0,-1).join('').length;
@@ -22,13 +22,18 @@ export function wordmarkSvg(monochrome=false):string|null{
     const rows=glyphs[letter],start=offset;offset+=rows[0].length+1;
     return `<g${!monochrome&&index>=accentStart?' class="brand-name-accent"':''}>${rows.map((row,y)=>[...row].map((pixel,x)=>pixel==='1'?`<rect x="${start+x}" y="${y}" width="1" height="1"/>`:'').join('')).join('')}</g>`;
   }).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" class="brand-wordmark" viewBox="0 0 ${offset+2} 7" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">${paths}<rect${monochrome?'':' class="brand-name-accent"'} x="${offset}" y="6" width="2" height="1"/></svg>`;
+  const cursor=withCursor?`<rect class="brand-cursor${monochrome?'':' brand-name-accent'}" x="${offset}" y="6" width="2" height="1"/>`:'';
+  return `<svg xmlns="http://www.w3.org/2000/svg" class="brand-wordmark" viewBox="0 0 ${withCursor?offset+2:offset-1} 7" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">${paths}${cursor}</svg>`;
 }
-const wordmark=wordmarkSvg();
 // A future rename automatically uses readable text if new glyphs are needed.
-export const productNameMarkup = wordmark
+function nameMarkup(withCursor=false){
+  const wordmark=wordmarkSvg(false,withCursor);
+  return wordmark
   ? `<span class="brand-name"><span class="brand-name-label">${escapeName(product.name)}</span>${wordmark}</span>`
   : `<span class="brand-name">${nameParts.map((part,index) => index===nameParts.length-1 ? `<span class="brand-name-accent">${escapeName(part)}</span>` : escapeName(part)).join('')}</span>`;
+}
+export const productNameMarkup=nameMarkup();
+export const productTitleMarkup=nameMarkup(true);
 // Opposed measurement corners. No letter, currency sign or provider-derived geometry.
 export const markPath = 'M4 18V4h14v4H8v10H4Zm10 6h10V14h4v14H14v-4Z';
 export const productMark = `<svg viewBox="0 0 32 32" fill="currentColor" aria-hidden="true"><path d="${markPath}"/></svg>`;
