@@ -1,6 +1,7 @@
 import {stripTypeScriptTypes} from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
+import {privacyPage} from './privacy-page.mjs';
 const output='packages/cli/dist';fs.mkdirSync(path.join(output,'public'),{recursive:true});fs.mkdirSync('apps/web/dist',{recursive:true});
 function compile(source,destination){const input=fs.readFileSync(source,'utf8').replace(/^import ['"]\.\/(?:style|landing)\.css['"];?\s*$/gm,'');const js=stripTypeScriptTypes(input,{mode:'strip'}).replace(/(from\s+['"][^'"]+)\.ts(['"])/g,'$1.js$2').replace(/(import\(['"][^'"]+)\.ts(['"]\))/g,'$1.js$2');fs.mkdirSync(path.dirname(destination),{recursive:true});fs.writeFileSync(destination,js);}
 function walk(directory){for(const e of fs.readdirSync(directory,{withFileTypes:true})){if(e.name==='dist')continue;const p=path.join(directory,e.name);if(e.isDirectory())walk(p);else if(e.isFile()&&p.endsWith('.ts'))compile(p,path.join(output,p.replace(/\.ts$/,'.js')));}}
@@ -28,7 +29,11 @@ for(const relative of ['apps/web/src/main.js','packages/core/src/subscriptions.j
   if(fs.existsSync(destination)&&!fs.lstatSync(destination).isSymbolicLink())fs.unlinkSync(destination);
 }
 fs.writeFileSync('apps/web/dist/index.html',fs.readFileSync('apps/web/landing.html','utf8').replaceAll('{{productName}}',product.name));
-for(const directory of [path.join(output,'public'),'apps/web/dist'])fs.copyFileSync('PRIVACY.md',path.join(directory,'privacy.txt'));
+for(const directory of [path.join(output,'public'),'apps/web/dist']){
+  fs.copyFileSync('PRIVACY.md',path.join(directory,'privacy.txt'));
+  fs.writeFileSync(path.join(directory,'privacy.html'),privacyPage(fs.readFileSync('PRIVACY.md','utf8'),product));
+  fs.writeFileSync(path.join(directory,'privacy.css'),css('apps/web/src/privacy.css'));
+}
 for(const name of ['README.md','PRE_RELEASE.md','PRIVACY.md','LICENSE'])if(fs.existsSync(name))fs.copyFileSync(name,path.join('packages/cli',name));
 fs.copyFileSync('packages/core/src/pricing/SOURCES.md',path.join(output,'PRICING.md'));
 fs.writeFileSync('packages/cli/README.md',fs.readFileSync('README.md','utf8').replace('packages/core/src/pricing/SOURCES.md','dist/PRICING.md'));
