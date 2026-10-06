@@ -1,23 +1,32 @@
 import type {Provider,Settings,SourceStatus,UsageRecord} from './types.ts';
 import {priceRecord,catalog,type Catalog} from './pricing/index.ts';
+import {fullCalendarMonths,shiftCalendarDays} from './calendar.ts';
+export {fullCalendarMonths} from './calendar.ts';
 const dayFormatter=new Intl.DateTimeFormat('en-CA',{year:'numeric',month:'2-digit',day:'2-digit'});
 function localDay(timestamp:string):string{const parts=dayFormatter.formatToParts(new Date(timestamp));return ['year','month','day'].map(type=>parts.find(part=>part.type===type)!.value).join('-');}
-export interface Range {from:string;until:string;label:string}
-export function dateRange(preset:string,now=new Date(),from?:string,to?:string):Range{
+export interface Range {from:string;until:string;label:string;preset?:string;calendarMonths?:number|null;calendarFrom?:string;calendarTo?:string}
+export function dateRange(preset:string,now=new Date(),from?:string,to?:string,month?:string,anchor?:string):Range{
+  const today=localDay(now.toISOString());
+  if(anchor!==undefined){if((preset!=='7d'&&preset!=='30d')||!/^(?:19|20|21)\d{2}-\d{2}-\d{2}$/.test(anchor)||shiftCalendarDays(anchor,0)===null)throw new Error('Choose a valid period');now=new Date(anchor+'T12:00:00');}
   const end=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1);let start=new Date(now.getFullYear(),now.getMonth(),now.getDate()-29);let label='Last 30 days';
   if(preset==='7d'){start=new Date(now.getFullYear(),now.getMonth(),now.getDate()-6);label='Last 7 days';}
-  else if(preset==='month'){start=new Date(now.getFullYear(),now.getMonth(),1);end.setTime(+new Date(now.getFullYear(),now.getMonth()+1,1));label=now.toLocaleDateString('en-US',{month:'long',year:'numeric'});}
+  else if(preset==='month'){
+    if(month!==undefined&&!/^(?:19|20|21)\d{2}-(?:0[1-9]|1[0-2])$/.test(month))throw new Error('Choose a valid month');
+    const year=month?Number(month.slice(0,4)):now.getFullYear(),index=month?Number(month.slice(5,7))-1:now.getMonth();
+    start=new Date(year,index,1);end.setTime(+new Date(year,index+1,1));label=start.toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  }
   else if(preset==='custom'){
     if(!from||!to||!/^\d{4}-\d{2}-\d{2}$/.test(from)||!/^\d{4}-\d{2}-\d{2}$/.test(to))throw new Error('Choose a valid date range');
     start=new Date(from+'T00:00:00');const last=new Date(to+'T00:00:00');const matches=(date:Date,text:string)=>Number.isFinite(+date)&&date.getFullYear()===Number(text.slice(0,4))&&date.getMonth()+1===Number(text.slice(5,7))&&date.getDate()===Number(text.slice(8,10));if(!matches(start,from)||!matches(last,to)||start>last||+last-+start>36600*864e5)throw new Error('Choose a valid date range');end.setTime(+new Date(last.getFullYear(),last.getMonth(),last.getDate()+1));label=`${from} — ${to}`;
   }else if(preset!=='30d')throw new Error('Invalid period');
-  return {from:start.toISOString(),until:end.toISOString(),label};
+  const calendarFrom=localDay(start.toISOString()),calendarTo=localDay(new Date(+end-1).toISOString());
+  if(anchor!==undefined&&anchor!==today)label=`${calendarFrom} — ${calendarTo}`;
+  const range={from:start.toISOString(),until:end.toISOString(),label,preset,calendarFrom,calendarTo};
+  return {...range,calendarMonths:fullCalendarMonths(range)};
 }
 export interface Comparison {subscription:number|null;value:number|null;roi:number|null;breakEven:string|null;outcome:'positive'|'negative'|'neutral';reason:string|null}
-export function subscriptionForRange(monthly:number,range:Range):number{
-  // Calendar-day proration in the server's local timezone, including multi-month ranges.
-  let total=0;const day=new Date(range.from),until=new Date(range.until);let guard=0;
-  while(day<until){const days=new Date(day.getFullYear(),day.getMonth()+1,0).getDate();total+=monthly/days;day.setDate(day.getDate()+1);if(++guard>36600)throw new Error('Range too large');}return total;
+export function subscriptionForRange(monthly:number,range:Range):number|null{
+  const months=fullCalendarMonths(range);return months===null?null:monthly*months;
 }
 export interface ProviderSummary {provider:Provider;detected:boolean;visible:boolean;status:'USAGE_FOUND'|'NO_USAGE'|'NO_DATA';records:number;importedRecords:number;tokens:number|null;tokensPartial:boolean;tokenBreakdown?:{input:number|null;output:number|null;cacheRead:number|null};apiEquivalent:number|null;knownSubtotal:number|null;pricedRecords:number;priceCoverage:number|null;confidence:string;historyPartial:boolean;comparison:Comparison;mode:string;monthly:number|null;first:string|null;last:string|null;days:number;issues:Record<string,number>}
 export interface Daily {date:string;codex:number|null;claude:number|null;hasUsage:boolean}
@@ -36,7 +45,7 @@ export function summarize(records:UsageRecord[],statuses:SourceStatus[],settings
     const historyPartial=!demo; // Local transcripts cannot prove that all historical requests were retained.
     const completePricing=rows.length>0&&priced.length===rows.length;const apiEquivalent=completePricing?subtotal:null;
     const billing=settings.billing[provider];const subscription=billing.mode==='SUBSCRIPTION'&&billing.monthly!==null?subscriptionForRange(billing.monthly,range):null;
-    let comparison=neutral(billing.mode==='API'?'API usage':billing.mode==='MIXED'?'Mixed billing':billing.mode==='UNKNOWN'?'Billing not set':subscription===null?'Subscription price not set':!completePricing?'Pricing unavailable':'Partial history',subscription);
+    let comparison=neutral(billing.mode==='API'?'API usage':billing.mode==='MIXED'?'Mixed billing':billing.mode==='UNKNOWN'?'Billing not set':fullCalendarMonths(range)===null?'Choose a full month':subscription===null?'Subscription price not set':!completePricing?'Pricing unavailable':'Partial history',subscription);
     if(completePricing&&subscription!==null){const value=apiEquivalent!-subscription;let accumulated=0;let breakEven:string|null=null;for(const d of daily){accumulated+=d[provider]??0;if(accumulated>=subscription){breakEven=d.date;break;}}comparison={subscription,value,roi:subscription>0?apiEquivalent!/subscription:null,breakEven:historyPartial?null:breakEven,outcome:historyPartial?'neutral':value>0?'positive':value<0?'negative':'neutral',reason:historyPartial?'Observed usage · Partial history':null};}
     const sumTokens=(key:'input_tokens'|'output_tokens'|'cached_input_tokens'):number|null=>rows.length&&rows.every(r=>r[key]!==null)?rows.reduce((total,r)=>total+r[key]!,0):null;
     const tokenBreakdown={input:sumTokens('input_tokens'),output:sumTokens('output_tokens'),cacheRead:sumTokens('cached_input_tokens')};

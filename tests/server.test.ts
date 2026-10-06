@@ -7,6 +7,16 @@ test('receipt color accepts only supported choices and preserves older settings'
   for(const receiptTheme of ['dark','light'] as const)assert.equal(validateSettings({...old,receiptTheme}).receiptTheme,receiptTheme);
   for(const receiptTheme of ['red',null,0,{},'<script>'])assert.throws(()=>validateSettings({...old,receiptTheme}),/receipt theme/);
 });
+test('calendar-month API supports historical selection and omits short-period comparisons',async()=>{
+  const running=await startServer({port:0,publicDirectory:'packages/cli/dist/public',demo:true});
+  try{
+    const historical=await(await fetch(running.url+'/api/summary?period=month&month=2026-05')).json();assert.equal(historical.range.label,'May 2026');assert.equal(historical.total.records,0);assert.equal(historical.total.apiEquivalent,null);
+    const short=await(await fetch(running.url+'/api/summary?period=30d')).json();assert.equal(short.total.comparison.subscription,null);assert.equal(short.total.comparison.roi,null);
+    const previous=await(await fetch(running.url+'/api/summary?period=30d&anchor=2026-09-30')).json();assert.equal(previous.range.calendarFrom,'2026-09-01');assert.equal(previous.range.calendarTo,'2026-09-30');assert.equal(previous.total.comparison.subscription,null);
+    assert.equal((await fetch(running.url+'/api/summary?period=7d&anchor=2026-02-30')).status,400);
+    assert.equal((await fetch(running.url+'/api/summary?period=month&month=2026-13')).status,400);
+  }finally{await running.close();}
+});
 test('summary cache reuses normalized history and observes local and external SQLite updates',async()=>{
   fs.mkdirSync('artifacts',{recursive:true});const directory=fs.mkdtempSync(path.resolve('artifacts/summary-cache-'));const store=new Store(directory);
   let reads=0;const records=store.records.bind(store);store.records=(...args)=>{reads++;return records(...args);};

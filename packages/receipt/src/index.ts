@@ -1,4 +1,5 @@
 import type {Summary,Comparison} from '../../core/src/summary.ts';
+import {fullCalendarMonths} from '../../core/src/calendar.ts';
 import {product} from '../../ui/src/brand.ts';
 export interface ReceiptRow {left:string;right:string;accent?:'positive'|'negative';strong?:boolean}
 export interface ReceiptModel {period:string;periodDetail:string;generated:string;rows:ReceiptRow[];outcome:string;confidence:string;demo:boolean}
@@ -6,6 +7,7 @@ export const money=(n:number|null,signed=false):string=>n===null?'Unavailable':`
 /** Compare only the displayed priced amount; preserve uncertainty and billing eligibility. */
 export function comparisonForDisplay(s:Summary):Comparison{
   const comparison=s.total.comparison,amount=s.total.apiEquivalent??s.total.knownSubtotal;
+  if(fullCalendarMonths(s.range)===null)return {...comparison,subscription:null,value:null,roi:null,breakEven:null,outcome:'neutral'};
   if(amount===null||comparison.subscription===null)return comparison;
   return {...comparison,value:comparison.value??amount-comparison.subscription,roi:comparison.roi??(comparison.subscription>0?amount/comparison.subscription:null)};
 }
@@ -26,15 +28,16 @@ export function receiptModel(s:Summary,generatedAt=new Date()):ReceiptModel{
   const value=comp.value;
   if(value!==null)rows.push({left:'You Saved',right:money(value,true),accent:value>=0?'positive':'negative',strong:true});
   // With partial pricing, compare only the printed known amount to the declared
-  // prorated subscription. The coverage footer stays visible; no outcome is inferred.
+  // full-month subscription. The coverage footer stays visible; no outcome is inferred.
   const multiple=comp.roi;
   if(multiple!==null)rows.push({left:'',right:''},{left:'VALUE MULTIPLE',right:`${multiple.toFixed(2)}×`,accent:multiple>=1?'positive':'negative',strong:true});
   if(comp.breakEven)rows.push({left:'BREAK-EVEN',right:new Date(comp.breakEven+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'}).toUpperCase()});
   const outcome=comp.outcome==='positive'?'YOUR PLAN WAS WORTH IT':comp.outcome==='negative'?'API WOULD HAVE BEEN CHEAPER':'';
+  const progress=!s.demo&&Date.parse(s.range.from)<=generatedAt.getTime()&&Date.parse(s.range.until)>generatedAt.getTime()&&fullCalendarMonths(s.range)!==null?'In progress · ':'';
   const coverage=s.total.apiEquivalent===null&&s.total.priceCoverage!==null?`${Math.round(s.total.priceCoverage*100)}% priced · `:'';
   const date=(value:string)=>new Date(value).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
   const generated=generatedAt.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',hour12:true}).replace(' at ', ' ');
-  return {period:s.range.label.toUpperCase(),periodDetail:date(s.range.from)+' – '+date(new Date(Date.parse(s.range.until)-1).toISOString()),generated,rows,outcome,confidence:s.historyPartial?`${coverage}API equivalent · Partial history`:`${coverage}API equivalent · ${s.confidence==='HIGH'?'High confidence':'Incomplete'}`,demo:s.demo};
+  return {period:s.range.label.toUpperCase(),periodDetail:date(s.range.from)+' – '+date(new Date(Date.parse(s.range.until)-1).toISOString()),generated,rows,outcome,confidence:s.historyPartial?`${progress}${coverage}API equivalent · Partial history`:`${progress}${coverage}API equivalent · ${s.confidence==='HIGH'?'High confidence':'Incomplete'}`,demo:s.demo};
 }
 export async function receiptFonts():Promise<void>{if(typeof document!=='undefined'&&document.fonts)await Promise.all([document.fonts.load('14px "Plex Mono"'),document.fonts.load('600 14px "Plex Mono"')]);}
 const paperTextures=new WeakMap<Document,HTMLCanvasElement>();

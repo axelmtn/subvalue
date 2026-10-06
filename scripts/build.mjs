@@ -10,6 +10,7 @@ for(const file of ['main','landing'])compile(`apps/web/src/${file}.ts`,path.join
 compile('packages/receipt/src/index.ts',path.join(output,'public','packages/receipt/src/index.js'));
 compile('packages/ui/src/brand.ts',path.join(output,'public','packages/ui/src/brand.js'));
 compile('packages/core/src/subscriptions.ts',path.join(output,'public','packages/core/src/subscriptions.js'));
+compile('packages/core/src/calendar.ts',path.join(output,'public','packages/core/src/calendar.js'));
 fs.writeFileSync(path.join(output,'cli.js'),'#!/usr/bin/env node\nimport "./packages/cli/src/index.js";\n');
 function css(file){return fs.readFileSync(file,'utf8').replace(/@import ['"](.+?)['"];?/g,(_,relative)=>css(path.resolve(path.dirname(file),relative)));}
 for(const [name,source] of [['app','style'],['landing','landing']]){fs.writeFileSync(path.join(output,'public',`${name}.css`),css(`apps/web/src/${source}.css`));fs.writeFileSync(path.join(output,'public',`${name}.js`),`import './apps/web/src/${name==='app'?'main':'landing'}.js';\n`);}
@@ -25,7 +26,7 @@ for(const directory of [path.join(output,'public'),'apps/web/dist']){
 for(const name of ['landing.js','landing.css','icon.svg'])fs.copyFileSync(path.join(output,'public',name),path.join('apps/web/dist',name));
 // Only the landing's modules are shipped to the public site. No dashboard entry
 // point, provider scanner, database code or local API is part of this output.
-for(const relative of ['apps/web/src/landing.js','packages/receipt/src/index.js','packages/ui/src/brand.js']){
+for(const relative of ['apps/web/src/landing.js','packages/receipt/src/index.js','packages/ui/src/brand.js','packages/core/src/calendar.js']){
   const destination=path.join('apps/web/dist',relative);fs.mkdirSync(path.dirname(destination),{recursive:true});fs.copyFileSync(path.join(output,'public',relative),destination);
 }
 for(const relative of ['apps/web/src/main.js','packages/core/src/subscriptions.js']){

@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {receiptModel,comparisonForDisplay,money} from '../packages/receipt/src/index.ts';
-import {summarize} from '../packages/core/src/summary.ts';
+import {summarize,dateRange} from '../packages/core/src/summary.ts';
 import {defaultSettings} from '../packages/core/src/types.ts';
 import {record,prices,statuses} from './helpers.ts';
-const range={from:'2026-10-01T00:00:00Z',until:'2026-11-01T00:00:00Z',label:'October 2026'};
+const range=dateRange('month',new Date(2026,9,4,12));
 test('receipt prints normalized token components without empty providers',()=>{
   const summary=summarize([record(),record('claude',{id:'empty-claude',input_tokens:0,output_tokens:0,total_tokens:0})],statuses(),defaultSettings(),range,prices(),true);
   const receipt=receiptModel(summary);
@@ -40,14 +40,14 @@ test('receipt shows the priced amount once while retaining unknown models in det
     assert.equal(receipt.outcome,'');
   }
 });
-test('partial receipt prints a multiplier of its known amount and prorated subscription without a certain outcome',()=>{
+test('partial-period receipt retains known API amounts without subscription comparisons',()=>{
   const settings=defaultSettings();settings.billing.codex={mode:'SUBSCRIPTION',monthly:100};
   const selected={from:'2026-10-01T00:00:00Z',until:'2026-10-08T00:00:00Z',label:'Last 7 days'};
   const summary=summarize([record('codex',{id:'priced',input_tokens:0,cached_input_tokens:0,output_tokens:28742000,total_tokens:28742000}),record('codex',{id:'review',model_raw:'codex-auto-review'})],statuses(),settings,selected,prices());
-  const receipt=receiptModel(summary),expected=summary.total.knownSubtotal!/summary.total.comparison.subscription!;
+  const receipt=receiptModel(summary);
   assert.equal(summary.total.comparison.roi,null);
-  assert.equal(receipt.rows.find(r=>r.left==='VALUE MULTIPLE')?.right,expected.toFixed(2)+'×');
-  assert.equal(receipt.rows.find(r=>r.left==='You Saved')?.right.startsWith('+$'),true);
+  assert.equal(summary.total.comparison.subscription,null);assert.ok(!receipt.rows.some(r=>['VALUE MULTIPLE','Subscription Cost'].includes(r.left)));
+  assert.ok(!receipt.rows.some(r=>r.left==='You Saved'));
   assert.match(receipt.confidence,/50% priced/);assert.equal(receipt.outcome,'');
 });
 

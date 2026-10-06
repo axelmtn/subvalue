@@ -16,7 +16,7 @@ test('selected subscriptions preserve exact annual equivalents and validate prov
   const s=defaultSettings();s.billing.claude={mode:'SUBSCRIPTION',monthly:16.67,planId:'claude-pro-annual'};
   const b=validateSettings(s).billing.claude;assert.equal(b.monthly,200/12);assert.equal(b.planId,'claude-pro-annual');
   assert.match(subscriptionPlanLabel(subscriptionPlan('claude',b.planId)!),/\$200\/year/);
-  const month=dateRange('month',new Date(2026,9,15));assert.ok(Math.abs(subscriptionForRange(b.monthly!,month)-200/12)<1e-10);
+  const month=dateRange('month',new Date(2026,9,15));assert.ok(Math.abs(subscriptionForRange(b.monthly!,month)!-200/12)<1e-10);
   s.billing.claude.monthly=17;assert.throws(()=>validateSettings(s),/amount/);
   s.billing.claude.planId='chatgpt-plus';assert.throws(()=>validateSettings(s),/plan/);
 });

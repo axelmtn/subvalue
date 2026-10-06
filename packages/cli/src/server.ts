@@ -39,7 +39,7 @@ export async function startServer(options:{store?:Store;port:number;publicDirect
         if(url.pathname==='/api/bootstrap'&&req.method==='GET'){json(200,{token:secret,settings:demoSettings??options.store!.settings(),sources:demo?.statuses??options.store!.statuses(),demo:!!demo,lastScan:options.store?.get('lastScan')??null,scanning,progress});return;}
         if(url.pathname==='/api/summary'&&req.method==='GET'){
           if(scanning){json(503,{error:'Scan in progress'});return;}
-          const range=dateRange(url.searchParams.get('period')??'30d',new Date(),url.searchParams.get('from')??undefined,url.searchParams.get('to')??undefined);
+          const range=dateRange(url.searchParams.get('period')??'30d',new Date(),url.searchParams.get('from')??undefined,url.searchParams.get('to')??undefined,url.searchParams.get('month')??undefined,url.searchParams.get('anchor')??undefined);
           // History bounds use all normalized metadata, never original transcripts.
           const currentRevision=demo?'demo':options.store!.revision();if(currentRevision!==revision){invalidate();revision=currentRevision;}
           const key=JSON.stringify(range);let result=summaries.get(key);
