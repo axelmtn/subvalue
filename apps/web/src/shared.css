@@ -1,4 +1,4 @@
 /* Both the public page and local app use the same receipt renderer and tokens. */
 @font-face{font-family:Inter;font-style:normal;font-weight:100 900;font-display:block;src:url('/fonts/inter-latin.woff2') format('woff2')}
 @font-face{font-family:'Plex Mono';font-style:normal;font-weight:400 700;font-display:block;src:url('/fonts/plex-mono.woff2') format('woff2')}
-.brand-name{color:#eff0f1;font-weight:inherit;letter-spacing:inherit}.brand-name-accent{color:#37ec85}
+.brand-name{color:#eff0f1;font-family:Inter,sans-serif;font-weight:800;letter-spacing:-.055em;font-kerning:normal;font-optical-sizing:auto}.brand-name-accent{color:#37ec85}
