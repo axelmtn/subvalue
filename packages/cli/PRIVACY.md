@@ -22,7 +22,7 @@ Session files colocate counters and conversation text. Their bytes must therefor
 - Hashed event/source references and a hashed Claude request identity, for deduplication and provenance.
 - File sizes, modification times, hashes of small byte windows and offsets, for incremental scans.
 - Codex thread identity and cumulative-counter state in scan checkpoints, to preserve deduplication and counter resets. This identity is not sent to the dashboard.
-- User-declared billing settings, provider visibility and onboarding state.
+- User-declared billing settings, provider visibility, receipt color and onboarding state.
 
 Normalized records omit session/thread identities and project associations. Checkpoints omit unnecessary session, turn and project fields. Existing normalized caches are migrated locally without re-reading source histories or changing event keys and token totals.
 

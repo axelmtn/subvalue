@@ -15,6 +15,7 @@ const mime:Record<string,string>={'.html':'text/html; charset=utf-8','.js':'text
 export function validateSettings(value:any):Settings{
   if(!value||value.currency!=='USD'||typeof value.onboarded!=='boolean')throw new Error('Invalid settings');
   const s:Settings={onboarded:value.onboarded,currency:'USD',billing:{} as Settings['billing'],include:{} as Settings['include']};
+  if(value.receiptTheme!==undefined){if(!['dark','light'].includes(value.receiptTheme))throw new Error('Invalid receipt theme');s.receiptTheme=value.receiptTheme;}
   for(const provider of ['codex','claude'] as const){const b=value.billing?.[provider];if(!b||!['UNKNOWN','SUBSCRIPTION','API','MIXED'].includes(b.mode)||typeof value.include?.[provider]!=='boolean')throw new Error('Invalid billing settings');if(b.monthly!==null&&(typeof b.monthly!=='number'||!Number.isFinite(b.monthly)||b.monthly<0||b.monthly>1000000))throw new Error('Invalid subscription amount');
     const plan=b.planId==null?undefined:subscriptionPlan(provider,b.planId);if(b.planId!=null&&!plan)throw new Error('Invalid subscription plan');
     if(b.mode==='SUBSCRIPTION'&&plan&&(b.monthly===null||Math.abs(b.monthly-plan.monthly)>.005))throw new Error('Subscription amount does not match the selected plan');

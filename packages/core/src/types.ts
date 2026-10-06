@@ -23,6 +23,7 @@ export interface SourceStatus {
 }
 export interface Settings {
   onboarded: boolean; currency: 'USD'; include: Record<Provider, boolean>;
+  receiptTheme?: 'dark' | 'light';
   billing: Record<Provider, {mode: BillingMode; monthly: number | null;planId?:string|null}>;
 }
 export const defaultSettings = (): Settings => ({onboarded:false,currency:'USD',include:{codex:false,claude:false},billing:{codex:{mode:'UNKNOWN',monthly:null},claude:{mode:'UNKNOWN',monthly:null}}});

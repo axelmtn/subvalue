@@ -2,6 +2,11 @@ import test from 'node:test';import assert from 'node:assert/strict';import http
 import fs from 'node:fs';import path from 'node:path';
 import {Store} from '../packages/core/src/storage.ts';
 import {record,statuses} from './helpers.ts';
+test('receipt color accepts only supported choices and preserves older settings',()=>{
+  const old=defaultSettings();assert.deepEqual(validateSettings(old),old);
+  for(const receiptTheme of ['dark','light'] as const)assert.equal(validateSettings({...old,receiptTheme}).receiptTheme,receiptTheme);
+  for(const receiptTheme of ['red',null,0,{},'<script>'])assert.throws(()=>validateSettings({...old,receiptTheme}),/receipt theme/);
+});
 test('summary cache reuses normalized history and observes local and external SQLite updates',async()=>{
   fs.mkdirSync('artifacts',{recursive:true});const directory=fs.mkdtempSync(path.resolve('artifacts/summary-cache-'));const store=new Store(directory);
   let reads=0;const records=store.records.bind(store);store.records=(...args)=>{reads++;return records(...args);};

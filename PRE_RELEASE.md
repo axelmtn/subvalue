@@ -6,13 +6,13 @@ The normal installation command is `npx @subvalue/cli`. These instructions valid
 
 Install Node.js **24.13 or newer** on Windows, macOS or Linux. Check `node --version`.
 
-With access to the private repository, open the latest successful [Validate run](https://github.com/axelmtn/subvalue/actions/workflows/ci.yml). Download its `subvalue-cli-…` artifact and unzip it. Only `subvalue-cli-0.1.1.tgz` should be inside. The artifact expires after 14 days; a new Validate run regenerates it.
+With access to the private repository, open the latest successful [Validate run](https://github.com/axelmtn/subvalue/actions/workflows/ci.yml). Download its `subvalue-cli-…` artifact and unzip it. Only `subvalue-cli-0.1.2.tgz` should be inside. The artifact expires after 14 days; a new Validate run regenerates it.
 
 Put the `.tgz` in a new folder outside any repository. Open a terminal in that folder.
 
 ```sh
-npx --offline --yes --package ./subvalue-cli-0.1.1.tgz subvalue --dry-run
-npx --offline --yes --package ./subvalue-cli-0.1.1.tgz subvalue
+npx --offline --yes --package ./subvalue-cli-0.1.2.tgz subvalue --dry-run
+npx --offline --yes --package ./subvalue-cli-0.1.2.tgz subvalue
 ```
 
 The first command checks detection without reading session contents. The second scans real local usage, opens the browser, and serves only `127.0.0.1`. A different loopback port is selected if 4731 is occupied. No demo data is injected.
@@ -29,7 +29,7 @@ The first command checks detection without reading session contents. The second 
 For scan timings and cache counts:
 
 ```sh
-npx --offline --yes --package ./subvalue-cli-0.1.1.tgz subvalue --verbose
+npx --offline --yes --package ./subvalue-cli-0.1.2.tgz subvalue --verbose
 ```
 
 Default metadata storage:

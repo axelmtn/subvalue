@@ -46,7 +46,9 @@ function paperTexture(canvas:HTMLCanvasElement):HTMLCanvasElement{
   context.putImageData(pixels,0,0);paperTextures.set(document,texture);return texture;
 }
 const rowHeight=(row:ReceiptRow)=>!row.left&&!row.right?34:!row.right?34:row.left==='VALUE MULTIPLE'?46:row.accent?32:28;
-export function drawReceipt(canvas:HTMLCanvasElement,model:ReceiptModel):void{
+export function drawReceipt(canvas:HTMLCanvasElement,model:ReceiptModel,theme:'dark'|'light'='dark'):void{
+  const light=theme==='light';
+  const ink=(color:string)=>light?({'#e3e4e5':'#25282d','#f0f0ef':'#171b20','#b6b8bd':'#575d65','#a3a5a9':'#646971','#b4b5b9':'#626870','#d0d1d5':'#393f47','#37ec85':'#137744','#ed9987':'#b34436','#e1e2e4':'#22272d','#bdc0c6':'#505861','#e3e4e7':'#25282d','#b2b3b9':'#535a63','#a9adb5':'#626870'} as Record<string,string>)[color]??color:color;
   const width=360,height=196+model.rows.reduce((n,row)=>n+rowHeight(row),0)+174,scale=6;
   canvas.width=width*scale;canvas.height=height*scale;canvas.style.aspectRatio=`${width}/${height}`;
   const c=canvas.getContext('2d');if(!c)throw new Error('Canvas unavailable');c.scale(scale,scale);
@@ -54,15 +56,15 @@ export function drawReceipt(canvas:HTMLCanvasElement,model:ReceiptModel):void{
   c.beginPath();c.moveTo(0,7);
   for(let x=0;x<width;x+=10){const tooth=4+(x%3);c.lineTo(x+5,tooth);c.lineTo(x+10,8);}
   c.lineTo(width,height-8);for(let x=width;x>0;x-=10){c.lineTo(x-5,height-4-(x%3));c.lineTo(x-10,height-8);}c.closePath();
-  const paper=c.createLinearGradient(0,0,width*.3,height);paper.addColorStop(0,'#181e24');paper.addColorStop(.48,'#131920');paper.addColorStop(1,'#11171c');c.fillStyle=paper;c.fill();c.save();c.clip();
+  const paper=c.createLinearGradient(0,0,width*.3,height);paper.addColorStop(0,light?'#fbf9f4':'#181e24');paper.addColorStop(.48,light?'#f6f3ed':'#131920');paper.addColorStop(1,light?'#f0eee7':'#11171c');c.fillStyle=paper;c.fill();c.save();c.clip();
   c.fillStyle=c.createPattern(paperTexture(canvas),'repeat')!;c.fillRect(0,0,width,height);
-  c.restore();c.strokeStyle='#b4b8bd20';c.lineWidth=.6;c.stroke();
+  c.restore();c.strokeStyle=light?'#484e5826':'#b4b8bd20';c.lineWidth=.6;c.stroke();
   const mono='"Plex Mono", Consolas, monospace',left=24,right=width-24;
   const text=(value:string,x:number,y:number,size:number,color='#e3e4e5',align:CanvasTextAlign='left',bold=false,maxWidth=width-48)=>{
     c.font=`${bold?'600 ':''}${size}px ${mono}`;while(c.measureText(value).width>maxWidth&&size>8){size-=.5;c.font=`${bold?'600 ':''}${size}px ${mono}`;}
-    c.fillStyle=color;c.textAlign=align;c.fillText(value,x,y);
+    c.fillStyle=ink(color);c.textAlign=align;c.fillText(value,x,y);
   };
-  const line=(y:number)=>{c.strokeStyle='#6c6f754f';c.lineWidth=1;c.setLineDash([4,5]);c.beginPath();c.moveTo(left,y);c.lineTo(right,y);c.stroke();c.setLineDash([]);};
+  const line=(y:number)=>{c.strokeStyle=light?'#636a7359':'#6c6f754f';c.lineWidth=1;c.setLineDash([4,5]);c.beginPath();c.moveTo(left,y);c.lineTo(right,y);c.stroke();c.setLineDash([]);};
   text(product.name,width/2,64,29,'#f0f0ef','center');text('USAGE RECEIPT',width/2,92,13,'#b6b8bd','center');
   if(model.demo)text('EXAMPLE DATA',width/2,112,10,'#a3a5a9','center');
   text('Period',left,137,12.5,'#b4b5b9');text(model.periodDetail,right,137,12.5,'#d0d1d5','right',false,245);
@@ -79,12 +81,12 @@ export function drawReceipt(canvas:HTMLCanvasElement,model:ReceiptModel):void{
   line(y-3);text(model.outcome,width/2,y+27,10,model.outcome==='YOUR PLAN WAS WORTH IT'?'#37ec85':model.outcome==='API WOULD HAVE BEEN CHEAPER'?'#ed9987':'#b2b3b9','center');
   text(model.confidence,width/2,y+(model.outcome?51:28),11,'#a9adb5','center');
   const footerDivider=y+73;
-  c.strokeStyle='#767b8126';c.beginPath();c.moveTo(left,footerDivider);c.lineTo(right,footerDivider);c.stroke();
+  c.strokeStyle=light?'#62687033':'#767b8126';c.beginPath();c.moveTo(left,footerDivider);c.lineTo(right,footerDivider);c.stroke();
   text(product.site,left,height-44,11.5,'#a9adb5');
   // Decorative print detail only: fixed pattern, no symbology or user-derived information.
   const pattern=[2,1,1,1,3,1,1,2,2,1,1,1,4,1,1,2,3,1,2,1,1,2,2,1,3,1,1,1,2,2,1,1,3,1,2,1,1,2,4,1,1,1,2,1,3,2,1,1,2,1,1,2,3,1,2,1,1,1,3,2,1,1,2,1];
   const module=134/pattern.reduce((n,w)=>n+w,0);let bx=right-134;
   const barcodeHeight=41,barcodeTop=footerDivider+(height-8-footerDivider-barcodeHeight)/2;
-  c.fillStyle='#b8bec8c9';for(const [i,w]of pattern.entries()){if(i%2===0)c.fillRect(bx,barcodeTop,w*module,barcodeHeight);bx+=w*module;}
+  c.fillStyle=light?'#303740db':'#b8bec8c9';for(const [i,w]of pattern.entries()){if(i%2===0)c.fillRect(bx,barcodeTop,w*module,barcodeHeight);bx+=w*module;}
 }
 export async function exportReceipt(canvas:HTMLCanvasElement):Promise<void>{const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error('PNG export failed')),'image/png'));const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=product.exportBasename+'.png';a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);}
