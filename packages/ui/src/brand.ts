@@ -22,7 +22,7 @@ export function wordmarkSvg(monochrome=false,withCursor=false):string|null{
     const rows=glyphs[letter],start=offset;offset+=rows[0].length+1;
     return `<g${!monochrome&&index>=accentStart?' class="brand-name-accent"':''}>${rows.map((row,y)=>[...row].map((pixel,x)=>pixel==='1'?`<rect x="${start+x}" y="${y}" width="1" height="1"/>`:'').join('')).join('')}</g>`;
   }).join('');
-  const cursor=withCursor?`<rect class="brand-cursor${monochrome?'':' brand-name-accent'}" x="${offset}" y="5" width="5" height="2"/>`:'';
+  const cursor=withCursor?`<rect class="brand-cursor${monochrome?'':' brand-name-accent'}" x="${offset}" y="6" width="5" height="1"/>`:'';
   return `<svg xmlns="http://www.w3.org/2000/svg" class="brand-wordmark" viewBox="0 0 ${withCursor?offset+5:offset-1} 7" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">${paths}${cursor}</svg>`;
 }
 // A future rename automatically uses readable text if new glyphs are needed.
