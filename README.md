@@ -11,11 +11,13 @@ npx @subvalue/cli --dry-run
 npx @subvalue/cli
 ```
 
-The source repository is currently private. For optional installation from a local package, see [Package validation](PRE_RELEASE.md).
+For optional installation from a local package, see [Package validation](PRE_RELEASE.md).
 
 ## Run locally
 
 Requires **Node.js 24.13 or newer**. Runtime and production build have no external dependencies.
+
+For development, install dependencies with `npm ci --ignore-scripts`. Run `npm run check` for formatting, TypeScript, ESLint, build and unit/integration tests, then `npm run test:e2e` for browser and receipt-export checks. `npm run format` applies the shared format; CI rejects formatting drift on Windows, Linux and macOS.
 
 ```sh
 npm run build

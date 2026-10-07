@@ -626,6 +626,12 @@ try {
     await timezonePage.locator('#receipt-canvas').getAttribute('aria-label'),
     /VALUE MULTIPLE/,
   );
+  assert.ok(
+    (await timezonePage.locator('#receipt-canvas').getAttribute('aria-label')).includes(
+      receiptModel(complete).periodDetail,
+    ),
+    'Receipt dates preserve the server calendar in a different browser timezone',
+  );
   await timezoneContext.close();
   const emptyPage = await context.newPage();
   emptyPage.on('pageerror', (e) => errors.push(e.message));
@@ -748,6 +754,30 @@ try {
     path: path.join(output, 'partial-comparison-desktop.png'),
     fullPage: true,
   });
+  const almostComplete = {
+    ...partial,
+    total: { ...partial.total, records: 200, pricedRecords: 199, priceCoverage: 199 / 200 },
+    providers: partial.providers.map((provider) =>
+      provider.records
+        ? {
+            ...provider,
+            apiEquivalent: null,
+            records: 200,
+            pricedRecords: 199,
+            priceCoverage: 199 / 200,
+          }
+        : provider,
+    ),
+  };
+  await partialPage.route('**/api/summary?*', (route) => route.fulfill({ json: almostComplete }));
+  await partialPage.reload();
+  await partialPage.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
+  assert.match(await partialPage.locator('.coverage summary').innerText(), /<100% priced/);
+  assert.match(await partialPage.locator('.provider-card small').innerText(), /<100% priced/);
+  assert.match(
+    await partialPage.locator('#receipt-canvas').getAttribute('aria-label'),
+    /<100% priced/,
+  );
   await partialPage.close();
   assert.deepEqual(errors, [], 'No browser errors');
   assert.deepEqual(external, [], 'No external application requests');
@@ -762,6 +792,8 @@ try {
         externalRequests: 0,
         browserErrors: 0,
         checks: [
+          'partial coverage never rounds to 100%',
+          'receipt calendar dates across browser timezones',
           'month arrows including year change',
           '7D and 30D period arrows',
           'custom duration arrows',

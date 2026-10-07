@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { applicationDirectory } from './security.ts';
 import { baseRecord, hash } from './metadata.ts';
+import type { CodexState } from './providers/codex/index.ts';
+import type { ClaudeState } from './providers/claude/index.ts';
 import {
   defaultSettings,
   emptyDiagnostics,
@@ -18,13 +20,16 @@ export interface Checkpoint {
   line: number;
   head: string;
   tail: string;
-  state: any;
+  state: CodexState | ClaudeState;
   identity: string;
+}
+function copyField<T, K extends keyof T>(target: T, source: T, key: K): void {
+  target[key] = source[key];
 }
 function privateRecord(record: UsageRecord): UsageRecord {
   const result = baseRecord(record.provider, '', '');
   for (const key of Object.keys(result) as (keyof UsageRecord)[])
-    if (Object.hasOwn(record, key)) (result as any)[key] = record[key];
+    if (Object.hasOwn(record, key)) copyField(result, record, key);
   // These identities and project associations are not used by the V1 dashboard.
   result.session_id = null;
   result.thread_id = null;
@@ -42,11 +47,11 @@ function privateCheckpoint(checkpoint: Checkpoint): Checkpoint {
   const state = checkpoint.state;
   const diagnostics = emptyDiagnostics();
   for (const key of Object.keys(diagnostics) as (keyof typeof diagnostics)[])
-    if (Object.hasOwn(state.diagnostics, key)) (diagnostics as any)[key] = state.diagnostics[key];
+    if (Object.hasOwn(state.diagnostics, key)) copyField(diagnostics, state.diagnostics, key);
   // Codex's thread identity is needed to preserve its existing deduplication keys.
   // Other identities/project fields are unnecessary for incremental token counters.
   const next =
-    state.thread !== undefined
+    'thread' in state
       ? {
           thread: state.thread,
           session: null,
@@ -64,7 +69,7 @@ function privateCheckpoint(checkpoint: Checkpoint): Checkpoint {
                     'output_tokens',
                     'reasoning_output_tokens',
                     'total_tokens',
-                  ].map((key) => [key, state.previous[key] ?? null]),
+                  ].map((key) => [key, state.previous![key] ?? null]),
                 ),
           turn: null,
           segment: state.segment,

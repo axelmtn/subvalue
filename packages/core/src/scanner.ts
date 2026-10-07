@@ -156,7 +156,7 @@ export async function scan(
                   root.provider === 'claude' ||
                   CODEX_MARKERS.some((marker) => buffer.includes(marker));
                 if (candidate) {
-                  let o: any = null;
+                  let o: unknown = null;
                   try {
                     o = usageMetadata(buffer, root.provider);
                   } catch {

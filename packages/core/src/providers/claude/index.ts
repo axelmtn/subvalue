@@ -1,72 +1,96 @@
-import { baseRecord, hash, identifier, modelId, timestamp, token, track } from '../../metadata.ts';
+import {
+  baseRecord,
+  hash,
+  identifier,
+  isObject,
+  modelId,
+  timestamp,
+  token,
+  track,
+} from '../../metadata.ts';
 import { emptyDiagnostics, type Diagnostics, type UsageRecord } from '../../types.ts';
 export interface ClaudeState {
   diagnostics: Diagnostics;
 }
 export const claudeState = (): ClaudeState => ({ diagnostics: emptyDiagnostics() });
 export function parseClaude(
-  o: any,
-  s: ClaudeState,
-  ref: string,
+  event: unknown,
+  state: ClaudeState,
+  sourceReference: string,
   lineNumber: number,
 ): UsageRecord | null {
-  if (!o || o.type !== 'assistant') return null;
-  const m = o.message,
-    u = m?.usage;
-  if (!u || typeof u !== 'object') return null;
-  const msg = identifier(m.id),
-    req = identifier(o.requestId),
-    sid = identifier(o.sessionId);
+  if (!isObject(event) || event.type !== 'assistant' || !isObject(event.message)) return null;
+  const message = event.message,
+    usage = message.usage;
+  if (!isObject(usage)) return null;
+  const cacheCreation = isObject(usage.cache_creation) ? usage.cache_creation : null;
+  const serverToolUse = isObject(usage.server_tool_use) ? usage.server_tool_use : null;
+  const messageId = identifier(message.id),
+    requestId = identifier(event.requestId),
+    sessionId = identifier(event.sessionId);
   // Response blocks repeat the whole message usage. Never sum usage.iterations.
-  const event = hash(sid, msg ?? req ?? [ref, lineNumber], msg ? null : req);
-  const r = baseRecord('claude', ref, event);
-  r.timestamp = timestamp(o.timestamp);
-  r.session_id = sid;
-  r.request_id = req;
-  r.source_schema = 'claude.message.usage.v1';
-  r.model_raw = modelId(m.model);
-  if (typeof o.cwd === 'string') r.project_identifier_hash = hash('project', o.cwd);
-  r.input_tokens = token(u.input_tokens);
-  r.cached_input_tokens = token(u.cache_read_input_tokens);
-  r.cache_creation_tokens = token(u.cache_creation_input_tokens);
-  r.output_tokens = token(u.output_tokens);
-  r.cache_creation_5m_tokens = token(u.cache_creation?.ephemeral_5m_input_tokens);
-  r.cache_creation_1h_tokens = token(u.cache_creation?.ephemeral_1h_input_tokens);
-  r.service_tier = modelId(u.service_tier);
-  r.speed = modelId(u.speed);
-  r.web_search_requests = token(u.server_tool_use?.web_search_requests);
-  r.web_fetch_requests = token(u.server_tool_use?.web_fetch_requests);
+  const sourceEventId = hash(
+    sessionId,
+    messageId ?? requestId ?? [sourceReference, lineNumber],
+    messageId ? null : requestId,
+  );
+  const record = baseRecord('claude', sourceReference, sourceEventId);
+  record.timestamp = timestamp(event.timestamp);
+  record.session_id = sessionId;
+  record.request_id = requestId;
+  record.source_schema = 'claude.message.usage.v1';
+  record.model_raw = modelId(message.model);
+  if (typeof event.cwd === 'string') record.project_identifier_hash = hash('project', event.cwd);
+  record.input_tokens = token(usage.input_tokens);
+  record.cached_input_tokens = token(usage.cache_read_input_tokens);
+  record.cache_creation_tokens = token(usage.cache_creation_input_tokens);
+  record.output_tokens = token(usage.output_tokens);
+  record.cache_creation_5m_tokens = token(cacheCreation?.ephemeral_5m_input_tokens);
+  record.cache_creation_1h_tokens = token(cacheCreation?.ephemeral_1h_input_tokens);
+  record.service_tier = modelId(usage.service_tier);
+  record.speed = modelId(usage.speed);
+  record.web_search_requests = token(serverToolUse?.web_search_requests);
+  record.web_fetch_requests = token(serverToolUse?.web_fetch_requests);
   if (
-    [r.input_tokens, r.cached_input_tokens, r.cache_creation_tokens, r.output_tokens].every(
-      (n) => n !== null,
-    )
+    [
+      record.input_tokens,
+      record.cached_input_tokens,
+      record.cache_creation_tokens,
+      record.output_tokens,
+    ].every((n) => n !== null)
   )
-    r.total_tokens =
-      r.input_tokens! + r.cached_input_tokens! + r.cache_creation_tokens! + r.output_tokens!;
-  if (!msg || !req) {
-    r.quality = 'MEDIUM';
-    r.notes.push('weak-request-identity');
+    record.total_tokens =
+      record.input_tokens! +
+      record.cached_input_tokens! +
+      record.cache_creation_tokens! +
+      record.output_tokens!;
+  if (!messageId || !requestId) {
+    record.quality = 'MEDIUM';
+    record.notes.push('weak-request-identity');
   }
   if (
-    [r.input_tokens, r.cached_input_tokens, r.cache_creation_tokens, r.output_tokens].some(
-      (n) => n === null,
-    ) ||
-    !r.timestamp ||
-    !r.model_raw
+    [
+      record.input_tokens,
+      record.cached_input_tokens,
+      record.cache_creation_tokens,
+      record.output_tokens,
+    ].some((n) => n === null) ||
+    !record.timestamp ||
+    !record.model_raw
   )
-    r.quality = 'INCOMPLETE';
-  if (r.cache_creation_tokens !== null && r.cache_creation_tokens > 0) {
-    if (r.cache_creation_5m_tokens === null || r.cache_creation_1h_tokens === null) {
-      r.quality = 'INCOMPLETE';
-      r.notes.push('cache-duration-missing');
+    record.quality = 'INCOMPLETE';
+  if (record.cache_creation_tokens !== null && record.cache_creation_tokens > 0) {
+    if (record.cache_creation_5m_tokens === null || record.cache_creation_1h_tokens === null) {
+      record.quality = 'INCOMPLETE';
+      record.notes.push('cache-duration-missing');
     } else if (
-      r.cache_creation_5m_tokens + r.cache_creation_1h_tokens !==
-      r.cache_creation_tokens
+      record.cache_creation_5m_tokens + record.cache_creation_1h_tokens !==
+      record.cache_creation_tokens
     ) {
-      r.quality = 'INCOMPLETE';
-      r.notes.push('cache-duration-disagreement');
+      record.quality = 'INCOMPLETE';
+      record.notes.push('cache-duration-disagreement');
     }
   }
-  track(s.diagnostics, r);
-  return r;
+  track(state.diagnostics, record);
+  return record;
 }

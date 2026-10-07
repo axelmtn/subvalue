@@ -6,7 +6,123 @@ import { defaultSettings } from '../packages/core/src/types.ts';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Store } from '../packages/core/src/storage.ts';
-import { record, statuses } from './helpers.ts';
+import { record, statuses, meta, context, codexEvent, counts } from './helpers.ts';
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
+
+for (const failScan of [false, true]) {
+  test(`settings saved during a rescan survive ${failScan ? 'rollback' : 'commit'}`, async (t) => {
+    fs.mkdirSync('artifacts', { recursive: true });
+    const home = fs.mkdtempSync(path.resolve('artifacts/settings-rescan-'));
+    const source = path.join(home, '.codex', 'sessions', 'synthetic.jsonl');
+    fs.mkdirSync(path.dirname(source), { recursive: true });
+    fs.writeFileSync(
+      source,
+      [meta(), context(), codexEvent(counts())].map((event) => JSON.stringify(event)).join('\n') +
+        '\n',
+    );
+    const store = new Store(path.join(home, 'cache'), home);
+    const initial = { ...defaultSettings(), onboarded: true, receiptTheme: 'dark' as const };
+    store.saveSettings(initial);
+    const running = await startServer({
+      port: 0,
+      publicDirectory: 'packages/cli/dist/public',
+      store,
+      home,
+    });
+    const release = deferred();
+    const entered = deferred();
+    const originalStream = fs.createReadStream;
+    const streamMock = t.mock.method(
+      fs,
+      'createReadStream',
+      (
+        file: Parameters<typeof fs.createReadStream>[0],
+        options: Parameters<typeof fs.createReadStream>[1],
+      ) => {
+        const stream = originalStream(file, options);
+        if (file === source) {
+          const iterator = stream.iterator.bind(stream);
+          stream.iterator = ((options) =>
+            (async function* () {
+              for await (const chunk of iterator(options)) {
+                yield chunk;
+                entered.resolve();
+                await release.promise;
+              }
+            })()) as typeof stream.iterator;
+        }
+        return stream;
+      },
+    );
+    if (failScan)
+      t.mock.method(store, 'saveCheckpoint', () => {
+        throw new Error('Synthetic checkpoint failure');
+      });
+    let pendingSave: Promise<Response> | undefined;
+    const bootstrap = async () => (await fetch(running.url + '/api/bootstrap')).json();
+    const waitForScan = async () => {
+      for (let attempt = 0; attempt < 200; attempt++) {
+        if (!(await bootstrap()).scanning) return;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      throw new Error('Synthetic scan did not finish');
+    };
+    try {
+      const state = await bootstrap();
+      const headers = { 'Content-Type': 'application/json', 'X-Subvalue-Token': state.token };
+      assert.equal(
+        (await fetch(running.url + '/api/rescan', { method: 'POST', headers })).status,
+        202,
+      );
+      await entered.promise;
+      let acknowledged = false;
+      pendingSave = fetch(running.url + '/api/settings', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ ...initial, receiptTheme: 'light' }),
+      }).then((response) => {
+        acknowledged = true;
+        return response;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      assert.equal(
+        acknowledged,
+        false,
+        'Do not acknowledge settings inside an open scan transaction',
+      );
+      release.resolve();
+      assert.equal((await pendingSave).status, 200);
+      await waitForScan();
+      assert.equal(store.settings().receiptTheme, 'light');
+      assert.equal(store.statuses()[0].errors, failScan ? 1 : 0);
+      assert.equal(store.records().length, failScan ? 0 : 1);
+      const reopened = new Store(path.join(home, 'cache'), home);
+      try {
+        assert.equal(
+          reopened.settings().receiptTheme,
+          'light',
+          'The acknowledged setting is persistent',
+        );
+      } finally {
+        reopened.close();
+      }
+    } finally {
+      release.resolve();
+      await pendingSave;
+      await waitForScan();
+      streamMock.mock.restore();
+      await running.close();
+      store.close();
+    }
+  });
+}
 test('receipt color accepts only supported choices and preserves older settings', () => {
   const old = defaultSettings();
   assert.deepEqual(validateSettings(old), old);
@@ -158,6 +274,33 @@ test('invalid settings and non-finite money are rejected', () => {
   s.billing.codex.monthly = NaN;
   assert.throws(() => validateSettings(s));
   assert.throws(() => validateSettings({ ...defaultSettings(), currency: 'EUR' }));
+});
+
+test('settings validation rejects malformed JSON shapes without accepting partial settings', () => {
+  for (const value of [
+    null,
+    true,
+    [],
+    'settings',
+    1,
+    { ...defaultSettings(), billing: [] },
+    { ...defaultSettings(), include: null },
+  ]) {
+    assert.throws(() => validateSettings(value));
+  }
+  for (const invalid of [
+    null,
+    [],
+    { mode: {} },
+    { mode: 'SUBSCRIPTION', monthly: '200' },
+    { mode: 'SUBSCRIPTION', monthly: 200, planId: { id: 'chatgpt-pro' } },
+  ]) {
+    const settings = {
+      ...defaultSettings(),
+      billing: { ...defaultSettings().billing, codex: invalid },
+    };
+    assert.throws(() => validateSettings(settings));
+  }
 });
 test('server never accepts arbitrary filesystem paths', async () => {
   const s = await startServer({ port: 0, publicDirectory: 'packages/cli/dist/public', demo: true });

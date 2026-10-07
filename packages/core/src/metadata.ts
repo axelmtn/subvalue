@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
 import type { UsageRecord, Provider, Diagnostics } from './types.ts';
+export const isObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object';
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
+  isObject(value) && !Array.isArray(value);
 export const hash = (...parts: unknown[]): string =>
   createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 export const token = (v: unknown): number | null =>

@@ -6,48 +6,59 @@ import {
   productTitleMarkup,
 } from '../../../packages/ui/src/brand.ts';
 document.title = product.name + ' — Know what your AI subscription is worth';
-import { drawReceipt, receiptModel, receiptFonts } from '../../../packages/receipt/src/index.ts';
-import type { Summary } from '../../../packages/core/src/summary.ts';
-const example = {
+import {
+  drawReceipt,
+  receiptModel,
+  receiptFonts,
+  type ReceiptInput,
+} from '../../../packages/receipt/src/index.ts';
+const example: ReceiptInput = {
   range: {
     from: new Date(2026, 9, 1).toISOString(),
     until: new Date(2026, 10, 1).toISOString(),
     label: 'October 2026',
+    calendarFrom: '2026-10-01',
+    calendarTo: '2026-10-31',
+    calendarMonths: 1,
+    preset: 'month',
   },
   providers: [
     {
       provider: 'codex',
+      visible: true,
       records: 1,
       tokens: 20530000,
       tokensPartial: false,
       apiEquivalent: 201.36,
       knownSubtotal: 201.36,
-      comparison: { subscription: 200 },
     },
     {
       provider: 'claude',
+      visible: true,
       records: 1,
       tokens: 7840000,
       tokensPartial: false,
       apiEquivalent: 86.06,
       knownSubtotal: 86.06,
-      comparison: { subscription: 20 },
     },
   ],
   total: {
     apiEquivalent: 287.42,
+    knownSubtotal: 287.42,
+    priceCoverage: 1,
     comparison: {
       subscription: 220,
       value: 67.42,
       roi: 287.42 / 220,
       breakEven: '2026-10-24',
       outcome: 'positive',
+      reason: null,
     },
   },
   historyPartial: false,
   confidence: 'HIGH',
   demo: true,
-} as unknown as Summary;
+};
 document.querySelector('#landing')!.innerHTML = /* HTML */ `<header class="landing-nav">
     <a class="brand" href="#"><span class="brand-mark">${productMark}</span>${productNameMarkup}</a
     ><a class="github-link" href="#release">Install <span>↓</span></a>

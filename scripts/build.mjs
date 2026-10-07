@@ -43,6 +43,10 @@ compile(
   'packages/core/src/calendar.ts',
   path.join(output, 'public', 'packages/core/src/calendar.js'),
 );
+compile(
+  'packages/core/src/coverage.ts',
+  path.join(output, 'public', 'packages/core/src/coverage.js'),
+);
 fs.writeFileSync(
   path.join(output, 'cli.js'),
   '#!/usr/bin/env node\nimport "./packages/cli/src/index.js";\n',
@@ -99,6 +103,7 @@ for (const relative of [
   'packages/receipt/src/index.js',
   'packages/ui/src/brand.js',
   'packages/core/src/calendar.js',
+  'packages/core/src/coverage.js',
 ]) {
   const destination = path.join('apps/web/dist', relative);
   fs.mkdirSync(path.dirname(destination), { recursive: true });

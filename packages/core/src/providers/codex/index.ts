@@ -1,4 +1,13 @@
-import { baseRecord, hash, identifier, modelId, timestamp, token, track } from '../../metadata.ts';
+import {
+  baseRecord,
+  hash,
+  identifier,
+  isObject,
+  modelId,
+  timestamp,
+  token,
+  track,
+} from '../../metadata.ts';
 import { emptyDiagnostics, type Diagnostics, type UsageRecord } from '../../types.ts';
 type Counters = Record<string, number | null>;
 export interface CodexState {
@@ -31,59 +40,60 @@ const keys = [
   'reasoning_output_tokens',
   'total_tokens',
 ];
-const counters = (v: any): Counters | null =>
-  v && typeof v === 'object' ? Object.fromEntries(keys.map((k) => [k, token(v[k])])) : null;
+const counters = (value: unknown): Counters | null =>
+  isObject(value) ? Object.fromEntries(keys.map((key) => [key, token(value[key])])) : null;
 export function parseCodex(
-  o: any,
-  s: CodexState,
-  ref: string,
+  event: unknown,
+  state: CodexState,
+  sourceReference: string,
   lineNumber: number,
 ): UsageRecord | null {
-  if (!o || typeof o !== 'object') return null;
-  const p = o.payload;
-  if (!p || typeof p !== 'object') return null;
+  if (!isObject(event)) return null;
+  const payload = event.payload;
+  if (!isObject(payload)) return null;
+  const ordinal = token(event.ordinal);
   // Inherited metadata must not overwrite the child's identity or model either.
-  if (s.boundary !== null && token(o.ordinal) !== null && o.ordinal < s.boundary) {
-    if (o.type === 'event_msg' && p.type === 'token_count') s.diagnostics.inherited++;
+  if (state.boundary !== null && ordinal !== null && ordinal < state.boundary) {
+    if (event.type === 'event_msg' && payload.type === 'token_count') state.diagnostics.inherited++;
     return null;
   }
-  if (o.type === 'session_meta') {
-    const thread = identifier(p.id);
-    if (thread && s.thread && thread !== s.thread) {
-      s.previous = null;
-      s.boundary = null;
-      s.model = null;
-      s.project = null;
-      s.turn = null;
-      s.segment++;
+  if (event.type === 'session_meta') {
+    const thread = identifier(payload.id);
+    if (thread && state.thread && thread !== state.thread) {
+      state.previous = null;
+      state.boundary = null;
+      state.model = null;
+      state.project = null;
+      state.turn = null;
+      state.segment++;
     }
-    s.thread = thread ?? s.thread;
-    s.session = identifier(p.session_id) ?? s.thread;
-    if (typeof p.cwd === 'string') s.project = hash('project', p.cwd);
-    s.boundary = token(p.subagent_history_start_ordinal) ?? s.boundary;
-    s.model = modelId(p.model) ?? s.model;
+    state.thread = thread ?? state.thread;
+    state.session = identifier(payload.session_id) ?? state.thread;
+    if (typeof payload.cwd === 'string') state.project = hash('project', payload.cwd);
+    state.boundary = token(payload.subagent_history_start_ordinal) ?? state.boundary;
+    state.model = modelId(payload.model) ?? state.model;
     return null;
   }
-  if (o.type === 'turn_context') {
-    s.model = modelId(p.model) ?? s.model;
-    s.turn = identifier(p.turn_id) ?? s.turn;
-    if (typeof p.cwd === 'string') s.project = hash('project', p.cwd);
+  if (event.type === 'turn_context') {
+    state.model = modelId(payload.model) ?? state.model;
+    state.turn = identifier(payload.turn_id) ?? state.turn;
+    if (typeof payload.cwd === 'string') state.project = hash('project', payload.cwd);
     return null;
   }
-  if (o.type !== 'event_msg' || p.type !== 'token_count') return null;
-  if (s.boundary !== null) {
-    if (token(o.ordinal) === null) {
-      s.diagnostics.unsupported++;
+  if (event.type !== 'event_msg' || payload.type !== 'token_count') return null;
+  if (state.boundary !== null) {
+    if (ordinal === null) {
+      state.diagnostics.unsupported++;
       return null;
     }
-    if (o.ordinal < s.boundary) {
-      s.diagnostics.inherited++;
+    if (ordinal < state.boundary) {
+      state.diagnostics.inherited++;
       return null;
     }
   }
-  const info = p.info;
-  if (!info || typeof info !== 'object') {
-    s.diagnostics.unsupported++;
+  const info = payload.info;
+  if (!isObject(info)) {
+    state.diagnostics.unsupported++;
     return null;
   }
   const total = counters(info.total_token_usage),
@@ -91,15 +101,15 @@ export function parseCodex(
   let usage: Counters | null = null;
   let method = 'last';
   const notes: string[] = [];
-  if (total && s.previous) {
-    const comparable = keys.filter((k) => total[k] !== null && s.previous![k] !== null);
-    if (comparable.length && comparable.every((k) => total[k] === s.previous![k])) {
-      s.diagnostics.repeated++;
+  if (total && state.previous) {
+    const comparable = keys.filter((key) => total[key] !== null && state.previous![key] !== null);
+    if (comparable.length && comparable.every((key) => total[key] === state.previous![key])) {
+      state.diagnostics.repeated++;
       return null;
     }
-    if (comparable.some((k) => total[k]! < s.previous![k]!)) {
-      s.segment++;
-      s.diagnostics.resets++;
+    if (comparable.some((key) => total[key]! < state.previous![key]!)) {
+      state.segment++;
+      state.diagnostics.resets++;
       notes.push('counter-reset');
       usage = last;
       method = 'reset-last';
@@ -109,89 +119,100 @@ export function parseCodex(
       }
     } else {
       usage = Object.fromEntries(
-        keys.map((k) => [
-          k,
-          total[k] !== null && s.previous![k] !== null ? total[k]! - s.previous![k]! : null,
+        keys.map((key) => [
+          key,
+          total[key] !== null && state.previous![key] !== null
+            ? total[key]! - state.previous![key]!
+            : null,
         ]),
       );
       method = 'cumulative-delta';
-      if (last && keys.some((k) => usage![k] !== null && last[k] !== null && usage![k] !== last[k]))
+      if (
+        last &&
+        keys.some((key) => usage![key] !== null && last[key] !== null && usage![key] !== last[key])
+      )
         notes.push('last-delta-disagreement');
     }
   } else if (last) {
     usage = last;
-    if (total && keys.some((k) => last[k] !== null && total[k] !== null && last[k] !== total[k]))
+    if (
+      total &&
+      keys.some((key) => last[key] !== null && total[key] !== null && last[key] !== total[key])
+    )
       notes.push('nonzero-starting-baseline');
   } else if (total) {
     usage = total;
     method = 'initial-cumulative';
     notes.push('initial-cumulative-only');
   }
-  if (total) s.previous = total;
+  if (total) state.previous = total;
   if (!usage) {
-    s.diagnostics.unsupported++;
+    state.diagnostics.unsupported++;
     return null;
   }
-  const event = hash(
-    s.thread ?? ref,
-    token(o.ordinal) ?? lineNumber,
-    timestamp(o.timestamp),
-    s.segment,
+  const sourceEventId = hash(
+    state.thread ?? sourceReference,
+    token(event.ordinal) ?? lineNumber,
+    timestamp(event.timestamp),
+    state.segment,
     usage,
   );
-  const r = baseRecord('codex', ref, event);
-  r.timestamp = timestamp(o.timestamp);
-  r.thread_id = s.thread;
-  r.session_id = s.session;
-  r.request_id = null;
-  r.model_raw = s.model;
-  r.project_identifier_hash = s.project;
-  r.source_schema = `codex.token_count.v1/${method}`;
-  r.notes = notes;
-  r.input_tokens = usage.input_tokens;
-  r.cached_input_tokens = usage.cached_input_tokens;
-  r.cache_creation_tokens = usage.cache_write_input_tokens;
-  r.output_tokens = usage.output_tokens;
-  r.reasoning_tokens = usage.reasoning_output_tokens;
-  r.total_tokens = usage.total_tokens;
+  const record = baseRecord('codex', sourceReference, sourceEventId);
+  record.timestamp = timestamp(event.timestamp);
+  record.thread_id = state.thread;
+  record.session_id = state.session;
+  record.request_id = null;
+  record.model_raw = state.model;
+  record.project_identifier_hash = state.project;
+  record.source_schema = `codex.token_count.v1/${method}`;
+  record.notes = notes;
+  record.input_tokens = usage.input_tokens;
+  record.cached_input_tokens = usage.cached_input_tokens;
+  record.cache_creation_tokens = usage.cache_write_input_tokens;
+  record.output_tokens = usage.output_tokens;
+  record.reasoning_tokens = usage.reasoning_output_tokens;
+  record.total_tokens = usage.total_tokens;
   // A positive total with zero components is not a zero-token request.
   if (
-    r.total_tokens !== null &&
-    r.input_tokens !== null &&
-    r.output_tokens !== null &&
-    r.total_tokens !== r.input_tokens + r.output_tokens
+    record.total_tokens !== null &&
+    record.input_tokens !== null &&
+    record.output_tokens !== null &&
+    record.total_tokens !== record.input_tokens + record.output_tokens
   ) {
-    r.unallocated_total_tokens = Math.max(0, r.total_tokens - r.input_tokens - r.output_tokens);
-    r.notes.push('unallocated-total');
-    r.quality = 'INCOMPLETE';
-    if (r.input_tokens === 0 && r.output_tokens === 0 && r.total_tokens > 0) {
-      r.input_tokens = null;
-      r.output_tokens = null;
-      r.cached_input_tokens = null;
-      r.reasoning_tokens = null;
-      r.cache_creation_tokens = null;
+    record.unallocated_total_tokens = Math.max(
+      0,
+      record.total_tokens - record.input_tokens - record.output_tokens,
+    );
+    record.notes.push('unallocated-total');
+    record.quality = 'INCOMPLETE';
+    if (record.input_tokens === 0 && record.output_tokens === 0 && record.total_tokens > 0) {
+      record.input_tokens = null;
+      record.output_tokens = null;
+      record.cached_input_tokens = null;
+      record.reasoning_tokens = null;
+      record.cache_creation_tokens = null;
     }
   }
   if (
-    r.input_tokens === null ||
-    r.cached_input_tokens === null ||
-    r.cache_creation_tokens === null ||
-    r.output_tokens === null ||
-    !r.timestamp ||
-    !r.model_raw
+    record.input_tokens === null ||
+    record.cached_input_tokens === null ||
+    record.cache_creation_tokens === null ||
+    record.output_tokens === null ||
+    !record.timestamp ||
+    !record.model_raw
   )
-    r.quality = 'INCOMPLETE';
+    record.quality = 'INCOMPLETE';
   if (
-    r.cached_input_tokens !== null &&
-    r.input_tokens !== null &&
-    r.cached_input_tokens > r.input_tokens
+    record.cached_input_tokens !== null &&
+    record.input_tokens !== null &&
+    record.cached_input_tokens > record.input_tokens
   ) {
-    r.quality = 'INCOMPLETE';
-    r.notes.push('invalid-cache-subset');
+    record.quality = 'INCOMPLETE';
+    record.notes.push('invalid-cache-subset');
   }
   if (notes.includes('initial-cumulative-only') || notes.includes('reset-without-last'))
-    r.quality = 'INCOMPLETE';
-  if (r.quality === 'HIGH' && notes.length) r.quality = 'MEDIUM';
-  track(s.diagnostics, r);
-  return r;
+    record.quality = 'INCOMPLETE';
+  if (record.quality === 'HIGH' && notes.length) record.quality = 'MEDIUM';
+  track(state.diagnostics, record);
+  return record;
 }

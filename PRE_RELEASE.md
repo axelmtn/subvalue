@@ -6,13 +6,13 @@ The normal installation command is `npx @subvalue/cli`. These instructions valid
 
 Install Node.js **24.13 or newer** on Windows, macOS or Linux. Check `node --version`.
 
-With access to the private repository, open the latest successful [Validate run](https://github.com/axelmtn/subvalue/actions/workflows/ci.yml). Download its `subvalue-cli-…` artifact and unzip it. Only `subvalue-cli-0.1.2.tgz` should be inside. The artifact expires after 14 days; a new Validate run regenerates it.
+With repository access, open the latest successful [Validate run](https://github.com/axelmtn/subvalue/actions/workflows/ci.yml). Download its `subvalue-cli-…` artifact and unzip it. Only one `subvalue-cli-<version>.tgz` should be inside. The artifact expires after 14 days; a new Validate run regenerates it.
 
-Put the `.tgz` in a new folder outside any repository. Open a terminal in that folder.
+Put the `.tgz` in a new folder outside any repository. Rename this test copy to `subvalue-cli.tgz` and open a terminal in that folder. The commands below work for any package version.
 
 ```sh
-npx --offline --yes --package ./subvalue-cli-0.1.2.tgz subvalue --dry-run
-npx --offline --yes --package ./subvalue-cli-0.1.2.tgz subvalue
+npx --offline --yes --package ./subvalue-cli.tgz subvalue --dry-run
+npx --offline --yes --package ./subvalue-cli.tgz subvalue
 ```
 
 The first command checks detection without reading session contents. The second scans real local usage, opens the browser, and serves only `127.0.0.1`. A different loopback port is selected if 4731 is occupied. No demo data is injected.
@@ -29,7 +29,7 @@ The first command checks detection without reading session contents. The second 
 For scan timings and cache counts:
 
 ```sh
-npx --offline --yes --package ./subvalue-cli-0.1.2.tgz subvalue --verbose
+npx --offline --yes --package ./subvalue-cli.tgz subvalue --verbose
 ```
 
 Default metadata storage:
@@ -40,7 +40,7 @@ Default metadata storage:
 
 Do not send source logs, databases, credentials or conversation content when reporting a problem. Report the OS, Node version, safe error text, scan timing and cache counts. Review screenshots before sharing them.
 
-## Build from the private checkout
+## Build from source
 
 ```sh
 npm ci --ignore-scripts --no-audit --no-fund

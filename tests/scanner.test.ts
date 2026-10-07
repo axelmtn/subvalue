@@ -169,9 +169,7 @@ test('1 MiB reads preserve a UTF8 character split at the block boundary for both
     for (const cp of f.store.allCheckpoints())
       assert.equal(
         cp.offset,
-        cp.state.thread !== undefined
-          ? Buffer.byteLength(codexInput)
-          : Buffer.byteLength(claudeInput),
+        'thread' in cp.state ? Buffer.byteLength(codexInput) : Buffer.byteLength(claudeInput),
       );
     assert.equal(
       f.store.statuses().reduce((n, s) => n + s.errors + s.diagnostics.malformed, 0),
@@ -492,7 +490,7 @@ test('persistent metadata omits unnecessary identities and projects while preser
     const checkpoints = f.store.allCheckpoints();
     for (const checkpoint of checkpoints) {
       assert.ok(!JSON.stringify(checkpoint).includes('private-fixture'));
-      if (checkpoint.state.thread !== undefined) {
+      if ('thread' in checkpoint.state) {
         assert.equal(checkpoint.state.session, null);
         assert.equal(checkpoint.state.project, null);
         assert.equal(checkpoint.state.turn, null);

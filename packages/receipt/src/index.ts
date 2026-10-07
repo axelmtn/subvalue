@@ -1,6 +1,22 @@
-import type { Summary, Comparison } from '../../core/src/summary.ts';
+import type { Summary, ProviderSummary, Comparison } from '../../core/src/summary.ts';
 import { fullCalendarMonths } from '../../core/src/calendar.ts';
+import { formatPricingCoverage } from '../../core/src/coverage.ts';
 import { product } from '../../ui/src/brand.ts';
+/** Only public, aggregated fields needed by the receipt and its example. */
+export type ReceiptInput = Pick<Summary, 'range' | 'historyPartial' | 'confidence' | 'demo'> & {
+  providers: Pick<
+    ProviderSummary,
+    | 'provider'
+    | 'records'
+    | 'visible'
+    | 'tokens'
+    | 'tokensPartial'
+    | 'tokenBreakdown'
+    | 'apiEquivalent'
+    | 'knownSubtotal'
+  >[];
+  total: Pick<Summary['total'], 'apiEquivalent' | 'knownSubtotal' | 'priceCoverage' | 'comparison'>;
+};
 export interface ReceiptRow {
   left: string;
   right: string;
@@ -21,7 +37,7 @@ export const money = (n: number | null, signed = false): string =>
     ? 'Unavailable'
     : `${signed && n >= 0 ? '+' : ''}${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)}`;
 /** Compare only the displayed priced amount; preserve uncertainty and billing eligibility. */
-export function comparisonForDisplay(s: Summary): Comparison {
+export function comparisonForDisplay(s: ReceiptInput): Comparison {
   const comparison = s.total.comparison,
     amount = s.total.apiEquivalent ?? s.total.knownSubtotal;
   if (fullCalendarMonths(s.range) === null)
@@ -40,7 +56,7 @@ export function comparisonForDisplay(s: Summary): Comparison {
     roi: comparison.roi ?? (comparison.subscription > 0 ? amount / comparison.subscription : null),
   };
 }
-export function receiptModel(s: Summary, generatedAt = new Date()): ReceiptModel {
+export function receiptModel(s: ReceiptInput, generatedAt = new Date()): ReceiptModel {
   const rows: ReceiptRow[] = [];
   for (const p of s.providers.filter((p) => p.records > 0 && p.visible !== false)) {
     rows.push({ left: p.provider === 'codex' ? 'CODEX' : 'CLAUDE CODE', right: '', strong: true });
@@ -115,7 +131,7 @@ export function receiptModel(s: Summary, generatedAt = new Date()): ReceiptModel
       : '';
   const coverage =
     s.total.apiEquivalent === null && s.total.priceCoverage !== null
-      ? `${Math.round(s.total.priceCoverage * 100)}% priced · `
+      ? `${formatPricingCoverage(s.total.priceCoverage)} priced · `
       : '';
   const date = (value: string) =>
     new Date(value).toLocaleDateString('en-US', {
@@ -123,6 +139,19 @@ export function receiptModel(s: Summary, generatedAt = new Date()): ReceiptModel
       day: 'numeric',
       year: 'numeric',
     });
+  // Civil dates belong to the server's selected calendar, not the browser's
+  // timezone. Legacy summaries without calendar fields retain their fallback.
+  const calendarDate = (value: string) =>
+    new Date(value + 'T12:00:00Z').toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    });
+  const periodFrom = s.range.calendarFrom ? calendarDate(s.range.calendarFrom) : date(s.range.from);
+  const periodTo = s.range.calendarTo
+    ? calendarDate(s.range.calendarTo)
+    : date(new Date(Date.parse(s.range.until) - 1).toISOString());
   const generated = generatedAt
     .toLocaleString('en-US', {
       month: 'short',
@@ -135,8 +164,7 @@ export function receiptModel(s: Summary, generatedAt = new Date()): ReceiptModel
     .replace(' at ', ' ');
   return {
     period: s.range.label.toUpperCase(),
-    periodDetail:
-      date(s.range.from) + ' – ' + date(new Date(Date.parse(s.range.until) - 1).toISOString()),
+    periodDetail: periodFrom + ' – ' + periodTo,
     generated,
     rows,
     outcome,

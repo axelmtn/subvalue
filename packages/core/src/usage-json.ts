@@ -54,7 +54,7 @@ const fields: Record<Provider, Fields> = {
  * Skipped strings remain bytes: no prompt/response strings or objects are built.
  * The line's byte buffer is discarded by the scanner after processing.
  */
-export function usageMetadata(bytes: Buffer, provider: Provider): any {
+export function usageMetadata(bytes: Buffer, provider: Provider): unknown {
   let at = 0;
   const fail = (): never => {
     throw new SyntaxError('Invalid usage JSON');
@@ -112,7 +112,7 @@ export function usageMetadata(bytes: Buffer, provider: Provider): any {
       while (bytes[at] >= 48 && bytes[at] <= 57) at++;
     }
   };
-  const value = (selected: Selection, depth: number): any => {
+  const value = (selected: Selection, depth: number): unknown => {
     if (depth > 512) fail();
     space();
     const start = at,

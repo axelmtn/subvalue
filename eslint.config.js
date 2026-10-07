@@ -14,12 +14,17 @@ export default ts.config(
     files: ['**/*.ts'],
     rules: {
       'no-empty': ['error', { allowEmptyCatch: true }],
-      '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
     },
+  },
+  {
+    // Fixtures deliberately contain malformed and evolving provider schemas.
+    // Production adapters must narrow unknown values before accessing fields.
+    files: ['tests/**/*.ts'],
+    rules: { '@typescript-eslint/no-explicit-any': 'off' },
   },
   {
     files: ['**/*.mjs'],

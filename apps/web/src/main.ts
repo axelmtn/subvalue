@@ -9,11 +9,13 @@ import {
   subscriptionVerified,
 } from '../../../packages/core/src/subscriptions.ts';
 import type { Summary } from '../../../packages/core/src/summary.ts';
+import type { BootstrapResponse } from '../../../packages/cli/src/protocol.ts';
 import {
   fullCalendarMonths,
   shiftCalendarDays,
   shiftCalendarMonth,
 } from '../../../packages/core/src/calendar.ts';
+import { formatPricingCoverage } from '../../../packages/core/src/coverage.ts';
 import {
   drawReceipt,
   receiptModel,
@@ -261,7 +263,7 @@ function coverage() {
   return /* HTML */ `<details class="coverage">
     <summary>
       ${icon('shield')}<span
-        >${summary.historyPartial ? 'Partial history' : summary.confidence === 'HIGH' ? 'High confidence' : 'Incomplete'}${summary.total.priceCoverage !== null ? ` · ${Math.round(summary.total.priceCoverage * 100)}% priced` : ''}</span
+        >${summary.historyPartial ? 'Partial history' : summary.confidence === 'HIGH' ? 'High confidence' : 'Incomplete'}${summary.total.priceCoverage !== null ? ` · ${esc(formatPricingCoverage(summary.total.priceCoverage))} priced` : ''}</span
       ><span class="details-label">Details</span>
     </summary>
     <div class="coverage-content">
@@ -510,7 +512,7 @@ function providerCards() {
                 <span class="label">API equivalent</span
                 ><strong
                   >${p.records ? (p.knownSubtotal !== null ? money(p.apiEquivalent ?? p.knownSubtotal) : '—') : 'No data'}</strong
-                >${p.apiEquivalent === null && p.knownSubtotal !== null ? /* HTML */ `<small>${Math.round((p.priceCoverage ?? 0) * 100)}% priced</small>` : ''}
+                >${p.apiEquivalent === null && p.knownSubtotal !== null ? /* HTML */ `<small>${esc(formatPricingCoverage(p.priceCoverage))} priced</small>` : ''}
               </div>
               <div>
                 <span class="label">${p.tokensPartial ? 'Known tokens' : 'Tokens'}</span
@@ -537,7 +539,7 @@ function receiptPanel(compact = false) {
       class="receipt-canvas"
       id="receipt-canvas"
       role="img"
-      aria-label="${esc(model.period + ' · Generated ' + model.generated + ' · ' + model.rows.map((r) => r.left + ' ' + r.right).join(' · ') + ' · ' + model.outcome + ' · ' + model.confidence)}"
+      aria-label="${esc(model.period + ' · ' + model.periodDetail + ' · Generated ' + model.generated + ' · ' + model.rows.map((r) => r.left + ' ' + r.right).join(' · ') + ' · ' + model.outcome + ' · ' + model.confidence)}"
     ></canvas
     ><button class="button export-button" id="export-png">${icon('download')}Export PNG</button>
   </section>`;
@@ -1062,7 +1064,7 @@ function bind() {
       await api('/api/rescan', 'POST');
       const poll = async () => {
         try {
-          const b = await api<any>('/api/bootstrap');
+          const b = await api<BootstrapResponse>('/api/bootstrap');
           if (b.scanning) {
             setTimeout(() => void poll(), 1000);
             return;
@@ -1125,7 +1127,7 @@ function bind() {
 }
 async function boot() {
   try {
-    const b = await api<any>('/api/bootstrap');
+    const b = await api<BootstrapResponse>('/api/bootstrap');
     settings = b.settings;
     sources = b.sources;
     token = b.token;

@@ -5,6 +5,39 @@ import { summarize, dateRange } from '../packages/core/src/summary.ts';
 import { defaultSettings } from '../packages/core/src/types.ts';
 import { record, prices, statuses } from './helpers.ts';
 const range = dateRange('month', new Date(2026, 9, 4, 12));
+
+test('receipt dates preserve the selected calendar days across timezones', () => {
+  const selected = {
+    from: '2026-09-30T22:00:00.000Z',
+    until: '2026-10-31T23:00:00.000Z',
+    label: 'October 2026',
+    preset: 'month' as const,
+    calendarMonths: 1,
+    calendarFrom: '2026-10-01',
+    calendarTo: '2026-10-31',
+  };
+  const summary = summarize([record()], statuses(), defaultSettings(), selected, prices());
+  const originalTimezone = process.env.TZ;
+  try {
+    for (const timezone of ['America/Los_Angeles', 'Pacific/Kiritimati', 'Europe/Paris']) {
+      process.env.TZ = timezone;
+      assert.equal(receiptModel(summary).periodDetail, 'Oct 1, 2026 – Oct 31, 2026', timezone);
+    }
+  } finally {
+    if (originalTimezone === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTimezone;
+  }
+});
+
+test('receipt never rounds incomplete pricing up to 100%', () => {
+  const records = Array.from({ length: 200 }, (_, index) =>
+    record('codex', { id: String(index), model_raw: index === 199 ? 'unknown' : 'known' }),
+  );
+  const summary = summarize(records, statuses(), defaultSettings(), range, prices());
+  assert.equal(summary.total.apiEquivalent, null);
+  assert.equal(summary.total.pricedRecords, 199);
+  assert.match(receiptModel(summary).confidence, /<100% priced/);
+});
 test('receipt prints normalized token components without empty providers', () => {
   const summary = summarize(
     [

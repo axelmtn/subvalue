@@ -1,12 +1,69 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { usageMetadata } from '../packages/core/src/usage-json.ts';
+import { isRecord } from '../packages/core/src/metadata.ts';
 import { parseCodex, codexState } from '../packages/core/src/providers/codex/index.ts';
 import { parseClaude, claudeState } from '../packages/core/src/providers/claude/index.ts';
 import { meta, context, codexEvent, counts, claudeEvent } from './helpers.ts';
 import type { UsageRecord } from '../packages/core/src/types.ts';
 const persisted = (record: UsageRecord | null) =>
   record && { ...record, session_id: null, thread_id: null, project_identifier_hash: null };
+
+type ClaudeMetadata = Record<string, unknown> & {
+  message: Record<string, unknown> & { usage: Record<string, unknown> };
+};
+function assertClaudeMetadata(value: unknown): asserts value is ClaudeMetadata {
+  assert.ok(isRecord(value));
+  assert.ok(isRecord(value.message));
+  assert.ok(isRecord(value.message.usage));
+}
+
+test('provider adapters safely reject invalid event and nested metadata shapes', () => {
+  for (const value of [null, true, 1, 'event', [], { payload: [] }, { payload: null }]) {
+    assert.equal(parseCodex(value, codexState(), 'fixture', 1), null);
+    assert.equal(parseClaude(value, claudeState(), 'fixture', 1), null);
+  }
+  for (const value of [null, true, 1, 'usage']) {
+    assert.equal(
+      parseClaude({ type: 'assistant', message: { usage: value } }, claudeState(), 'fixture', 1),
+      null,
+    );
+    const state = codexState();
+    assert.equal(
+      parseCodex(
+        { type: 'event_msg', payload: { type: 'token_count', info: value } },
+        state,
+        'fixture',
+        1,
+      ),
+      null,
+    );
+    assert.equal(state.diagnostics.unsupported, 1);
+  }
+});
+
+test('array-shaped token containers preserve incomplete coverage instead of losing events', () => {
+  const claude = parseClaude(
+    { type: 'assistant', message: { usage: [] } },
+    claudeState(),
+    'fixture',
+    1,
+  );
+  assert.ok(claude);
+  assert.equal(claude.quality, 'INCOMPLETE');
+  assert.equal(claude.input_tokens, null);
+  assert.equal(claude.total_tokens, null);
+  const codex = parseCodex(
+    { type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: [] } } },
+    codexState(),
+    'fixture',
+    1,
+  );
+  assert.ok(codex);
+  assert.equal(codex.quality, 'INCOMPLETE');
+  assert.equal(codex.input_tokens, null);
+  assert.equal(codex.total_tokens, null);
+});
 
 test('extractor never decodes conversation values or builds their objects', () => {
   const secret = 'PRIVATE_CONVERSATION_SENTINEL',
@@ -18,13 +75,14 @@ test('extractor never decodes conversation values or builds their objects', () =
     decoded.push(text);
     return (original as any)(text, ...args);
   }) as typeof JSON.parse;
-  let metadata: any;
+  let metadata: unknown;
   try {
     metadata = usageMetadata(Buffer.from(JSON.stringify(event)), 'claude');
   } finally {
     JSON.parse = original;
   }
   assert.ok(decoded.every((text) => !text.includes(secret) && text.length < 1024));
+  assertClaudeMetadata(metadata);
   assert.equal(metadata.message.content, undefined);
   assert.equal(metadata.cwd, undefined);
   assert.equal(metadata.message.usage.iterations, undefined);
@@ -93,6 +151,7 @@ test('Claude extraction preserves cache durations, repeats, request fallback and
 test('escaped keys, Unicode, duplicate fields and nested skipped content use JSON semantics', () => {
   const input = String.raw`{"unknown":{"array":[{"content":"private \" text \u263A"},-1.2e+3,true,false,null]},"t\u0079pe":"assistant","message":{"model":"old","model":"known","usage":{"input_tokens":1e2,"output_tokens":0}},"timestamp":"2026-10-01T11:00:00Z"}`;
   const actual = usageMetadata(Buffer.from(input), 'claude');
+  assertClaudeMetadata(actual);
   assert.equal(actual.type, 'assistant');
   assert.equal(actual.message.model, 'known');
   assert.equal(actual.message.usage.input_tokens, 100);
@@ -134,6 +193,7 @@ test('invalid token types and oversized strings stay unknown without decoding pr
     }),
   );
   const actual = usageMetadata(input, 'claude');
+  assertClaudeMetadata(actual);
   assert.equal(actual.message.model, null);
   assert.equal(actual.message.usage.input_tokens, null);
   assert.equal(actual.message.usage.output_tokens, null);
