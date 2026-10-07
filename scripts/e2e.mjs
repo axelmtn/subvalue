@@ -39,6 +39,35 @@ let browser;
 const failures = [];
 const errors = [];
 const external = [];
+async function verifyReceiptWordmark(page, selector, theme) {
+  const print = await page.locator(selector).evaluate((canvas, theme) => {
+    const scale = 6,
+      left = 24 * scale,
+      top = 30 * scale,
+      width = 312 * scale,
+      data = canvas.getContext('2d').getImageData(left, top, width, 40 * scale).data;
+    let minX = Infinity,
+      maxX = -Infinity,
+      greenPixels = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const [r, g, b] = data.slice(i, i + 3),
+        green = g > 80 && g > r * 1.4 && g > b * 1.2,
+        lettering = theme === 'dark' ? r > 180 && g > 180 && b > 180 : r < 80 && g < 80 && b < 80;
+      if (green) greenPixels++;
+      if (green || lettering) {
+        const x = left + ((i / 4) % width);
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+      }
+    }
+    return { minX, maxX, greenPixels };
+  }, theme);
+  assert.ok(print.greenPixels > 100, 'Pixel wordmark includes the green Value lettering');
+  assert.ok(
+    print.minX >= 102 * 6 - 1 && print.maxX <= 258 * 6 + 1,
+    'Receipt wordmark is compact and centered, without a preceding icon or cursor',
+  );
+}
 try {
   let ready = false;
   for (let i = 0; i < 100; i++) {
@@ -160,7 +189,7 @@ try {
     assert.equal(await page.locator('.metric').count(), 1);
     assert.doesNotMatch(
       await page.locator('#receipt-canvas').getAttribute('aria-label'),
-      /Subscription Cost|You Saved|VALUE MULTIPLE/,
+      /Subscription Cost|Total Saved|VALUE MULTIPLE/,
     );
   }
   await page.getByRole('button', { name: 'Month', exact: true }).click();
@@ -397,7 +426,7 @@ try {
   const noSubscriptions = await (await fetch(url + '/api/bootstrap')).json();
   for (const provider of ['codex', 'claude'])
     assert.deepEqual(noSubscriptions.settings.billing[provider], {
-      mode: 'NO_SUBSCRIPTION',
+      mode: 'API',
       monthly: null,
     });
   // Previously stored mixed billing stays readable, without restoring that UI choice.
@@ -413,7 +442,9 @@ try {
   await page.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
   assert.equal(await page.locator('.metric').count(), 1);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  assert.equal(await page.locator('#plan-codex').inputValue(), '');
+  assert.equal(await page.locator('#plan-codex').inputValue(), 'custom');
+  assert.equal(await page.locator('[name=mixed-codex]').isChecked(), true);
+  await page.locator('[name=mixed-codex]').uncheck();
   assert.equal(await page.locator('option[value=MIXED]').count(), 0);
   await page.locator('#plan-codex').selectOption('chatgpt-pro-200');
   await page.getByRole('button', { name: 'Save changes' }).click();
@@ -460,6 +491,7 @@ try {
   await page.getByRole('button', { name: 'Receipt', exact: true }).focus();
   assert.ok(await page.locator('#chart-tooltip').isHidden());
   await page.getByRole('button', { name: 'Receipt', exact: true }).click();
+  await verifyReceiptWordmark(page, '#receipt-canvas', 'dark');
   await page.getByRole('button', { name: 'White receipt', exact: true }).click();
   await page.waitForFunction(() => !document.querySelector('[data-receipt-theme=light]').disabled);
   await page.reload();
@@ -471,6 +503,7 @@ try {
     'true',
   );
   assert.equal((await (await fetch(url + '/api/bootstrap')).json()).settings.receiptTheme, 'light');
+  await verifyReceiptWordmark(page, '#receipt-canvas', 'light');
   const whitePixel = await page
     .locator('#receipt-canvas')
     .evaluate((canvas) => Array.from(canvas.getContext('2d').getImageData(60, 120, 1, 1).data));
@@ -558,6 +591,13 @@ try {
     await page.locator('#example-receipt').getAttribute('aria-label'),
     /Codex and Claude Code example data/,
   );
+  assert.match(
+    await page.locator('#example-receipt').getAttribute('aria-label'),
+    /CODEX[\s\S]*Input Tokens 19,230,000[\s\S]*Output Tokens 1,300,000[\s\S]*Cache Reads 15,000,000[\s\S]*CLAUDE CODE[\s\S]*Input Tokens 440,000[\s\S]*Output Tokens 400,000[\s\S]*Cache Reads 7,000,000[\s\S]*Total Saved \+\$67.42/,
+    'Public receipt uses the updated token breakdown and total labels',
+  );
+  await page.waitForFunction(() => document.querySelector('#example-receipt').width === 2160);
+  await verifyReceiptWordmark(page, '#example-receipt', 'dark');
   assert.equal(
     await page.locator('.release-note').first().innerText(),
     'Node.js 24.13+ · Windows · macOS · Linux',
@@ -574,6 +614,10 @@ try {
     );
     if (width === 390 || width === 1440)
       await page.screenshot({ path: path.join(output, `landing-${width}.png`), fullPage: true });
+    if (width === 390 || width === 1440)
+      await page.locator('.product-preview').screenshot({
+        path: path.join(output, `landing-preview-${width}.png`),
+      });
   }
   await page.locator('.privacy-details summary').click();
   const privacyLink = page.getByRole('link', { name: 'Data access ↗', exact: true });
@@ -658,6 +702,103 @@ try {
     'Receipt dates preserve the server calendar in a different browser timezone',
   );
   await timezoneContext.close();
+  // A historical provider without a subscription must not hide the paid provider's comparison.
+  for (const paid of ['codex', 'claude']) {
+    const scopedPage = await context.newPage();
+    scopedPage.on('pageerror', (error) => errors.push(error.message));
+    const scoped = {
+      ...complete,
+      demo: true,
+      range: dateRange('month', new Date(2026, 7, 15)),
+      providers: complete.providers.map((provider) => ({
+        ...provider,
+        mode: provider.provider === paid ? 'SUBSCRIPTION' : 'NO_SUBSCRIPTION',
+        records: 1,
+        visible: true,
+        apiEquivalent: provider.provider === paid ? 201.36 : 86.06,
+        knownSubtotal: provider.provider === paid ? 201.36 : 86.06,
+        comparison: {
+          subscription: provider.provider === paid ? 100 : null,
+          value: null,
+          roi: null,
+          breakEven: null,
+          outcome: 'neutral',
+          reason: null,
+        },
+      })),
+      total: {
+        ...complete.total,
+        apiEquivalent: 287.42,
+        knownSubtotal: 287.42,
+        records: 2,
+        comparison: {
+          subscription: null,
+          value: null,
+          roi: null,
+          breakEven: null,
+          outcome: 'neutral',
+          reason: null,
+        },
+      },
+    };
+    await scopedPage.route('**/api/bootstrap', (route) =>
+      route.fulfill({ json: { ...initial, demo: true } }),
+    );
+    await scopedPage.route('**/api/summary?*', (route) => route.fulfill({ json: scoped }));
+    await scopedPage.goto(url);
+    await scopedPage.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
+    assert.equal(await scopedPage.locator('.selected-period').innerText(), 'August 2026');
+    assert.equal(await scopedPage.locator('.metric').count(), 4);
+    assert.match(await scopedPage.locator('.metric').nth(1).innerText(), /\$100.00/);
+    const providerName = paid === 'codex' ? 'Codex' : 'Claude Code';
+    assert.match(await scopedPage.locator('.metric').nth(1).innerText(), new RegExp(providerName));
+    assert.match(await scopedPage.locator('.metric.positive').innerText(), /\+\$101.36/);
+    assert.match(await scopedPage.locator('.metric').nth(3).innerText(), /2.01/);
+    assert.match(
+      await scopedPage.locator('#receipt-canvas').getAttribute('aria-label'),
+      new RegExp(paid === 'codex' ? 'CODEX COMPARISON' : 'CLAUDE CODE COMPARISON'),
+    );
+    await scopedPage.setViewportSize({ width: 1440, height: 1000 });
+    await scopedPage.screenshot({
+      path: path.join(output, 'scoped-comparison-' + paid + '-desktop.png'),
+      fullPage: true,
+    });
+    await scopedPage.setViewportSize({ width: 390, height: 1000 });
+    assert.ok(await scopedPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await scopedPage.screenshot({
+      path: path.join(output, 'scoped-comparison-' + paid + '-mobile.png'),
+      fullPage: true,
+    });
+    await scopedPage.getByRole('button', { name: 'Receipt', exact: true }).click();
+    const download = scopedPage.waitForEvent('download');
+    await scopedPage.getByRole('button', { name: 'Export PNG', exact: true }).click();
+    const pngPath = path.join(output, 'scoped-comparison-' + paid + '.png');
+    await (await download).saveAs(pngPath);
+    const samePixels = await scopedPage
+      .locator('#receipt-canvas')
+      .evaluate(async (canvas, encoded) => {
+        const bytes = Uint8Array.from(atob(encoded), (value) => value.charCodeAt(0)),
+          image = await createImageBitmap(new Blob([bytes], { type: 'image/png' })),
+          decoded = document.createElement('canvas');
+        decoded.width = image.width;
+        decoded.height = image.height;
+        decoded.getContext('2d').drawImage(image, 0, 0);
+        const preview = canvas
+            .getContext('2d')
+            .getImageData(0, 0, canvas.width, canvas.height).data,
+          exported = decoded
+            .getContext('2d')
+            .getImageData(0, 0, decoded.width, decoded.height).data,
+          matches =
+            canvas.width === decoded.width &&
+            canvas.height === decoded.height &&
+            preview.every((value, i) => value === exported[i]);
+        image.close();
+        return matches;
+      }, fs.readFileSync(pngPath).toString('base64'));
+    assert.ok(samePixels, 'Scoped receipt PNG pixels match the preview');
+    await scopedPage.close();
+  }
   const emptyPage = await context.newPage();
   emptyPage.on('pageerror', (e) => errors.push(e.message));
   const emptySettings = defaultSettings(),
@@ -743,7 +884,7 @@ try {
       await historicalPage.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
       for (const [i, provider] of ['codex', 'claude'].entries()) {
         if (scenario[i] === 'none') {
-          assert.deepEqual(saved.billing[provider], { mode: 'NO_SUBSCRIPTION', monthly: null });
+          assert.deepEqual(saved.billing[provider], { mode: 'API', monthly: null });
         } else {
           assert.equal(saved.billing[provider].mode, 'SUBSCRIPTION');
           assert.equal(saved.billing[provider].monthly, provider === 'codex' ? 100 : 200 / 12);
@@ -838,6 +979,252 @@ try {
     /<100% priced/,
   );
   await partialPage.close();
+  // Exercise month-specific billing with synthetic metadata only.
+  const expensePage = await context.newPage();
+  expensePage.on('pageerror', (e) => errors.push(e.message));
+  let expenseSettings = defaultSettings();
+  expenseSettings.onboarded = true;
+  expenseSettings.billing.codex = { mode: 'SUBSCRIPTION', monthly: 100, planId: 'chatgpt-pro-100' };
+  let failExpenseSave = false;
+  let expenseSelectedMonth = '2026-08';
+  const { baseRecord } = await import('../packages/cli/dist/packages/core/src/metadata.js');
+  const expenseRows = ['2026-08', '2026-09'].flatMap((month) =>
+    ['codex', 'claude'].map((provider) => ({
+      ...baseRecord(provider, 'synthetic', provider + month),
+      id: provider + month,
+      timestamp: month + '-15T12:00:00.000Z',
+      model_raw: 'test-model',
+      input_tokens: 0,
+      cached_input_tokens: 0,
+      cache_creation_tokens: 0,
+      output_tokens: (provider === 'codex' ? 200 : 100) * 100000,
+      total_tokens: (provider === 'codex' ? 200 : 100) * 100000,
+      quality: 'HIGH',
+    })),
+  );
+  const expenseCatalog = {
+    version: 'synthetic',
+    mappings: {
+      codex: { 'test-model': 'test-model' },
+      claude: { 'test-model': 'test-model' },
+    },
+    prices: ['codex', 'claude'].map((provider) => ({
+      provider,
+      model: 'test-model',
+      effective_from: '2026-01-01T00:00:00.000Z',
+      effective_until: null,
+      input: 0,
+      cached_input: 0,
+      output: 10,
+      cache_write: 0,
+      cache_write_5m: 0,
+      cache_write_1h: 0,
+      source: 'synthetic',
+      verified_at: '2026-10-01T00:00:00.000Z',
+    })),
+  };
+  await expensePage.route('**/api/bootstrap', (route) =>
+    route.fulfill({
+      json: {
+        ...initial,
+        settings: expenseSettings,
+        demo: true,
+      },
+    }),
+  );
+  await expensePage.route('**/api/summary?*', (route) => {
+    const query = new URL(route.request().url()).searchParams;
+    if (['2026-08', '2026-09'].includes(query.get('month')))
+      expenseSelectedMonth = query.get('month');
+    return route.fulfill({
+      json: summarize(
+        expenseRows,
+        [],
+        expenseSettings,
+        dateRange('month', new Date(2026, 7, 15), undefined, undefined, expenseSelectedMonth),
+        expenseCatalog,
+        true,
+      ),
+    });
+  });
+  await expensePage.route('**/api/settings', (route) => {
+    if (failExpenseSave)
+      return route.fulfill({ status: 503, json: { error: 'Synthetic failure' } });
+    expenseSettings = route.request().postDataJSON();
+    return route.fulfill({ json: { saved: true } });
+  });
+  await expensePage.goto(url);
+  await expensePage.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
+  assert.equal(await expensePage.locator('[data-period-billing=codex]').count(), 0);
+  assert.equal(await expensePage.locator('[data-period-billing=claude]').count(), 1);
+  assert.equal(
+    await expensePage.locator('[data-expense-toggle=claude]').innerText(),
+    'Categorize expenses for this period',
+  );
+  assert.equal(await expensePage.locator('#card-plan-claude').inputValue(), 'none');
+  assert.equal(await expensePage.locator('[name=api-spend-claude]').inputValue(), '');
+  await expensePage.setViewportSize({ width: 1440, height: 1000 });
+  await expensePage.screenshot({ path: path.join(output, 'expenses-desktop.png'), fullPage: true });
+  await expensePage.setViewportSize({ width: 390, height: 850 });
+  assert.ok(await expensePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await expensePage.screenshot({ path: path.join(output, 'expenses-mobile.png'), fullPage: true });
+  await expensePage.locator('[data-expense-toggle=claude]').click();
+  const chartTop = await expensePage
+    .locator('.chart')
+    .evaluate((el) => el.getBoundingClientRect().top);
+  await expensePage.keyboard.press('Escape');
+  assert.equal(
+    await expensePage.locator('.chart').evaluate((el) => el.getBoundingClientRect().top),
+    chartTop,
+    'Expenses never move the chart',
+  );
+  await expensePage.locator('[data-expense-toggle=claude]').click();
+  await expensePage.screenshot({ path: path.join(output, 'expenses-open-mobile.png') });
+  await expensePage.locator('[name=api-spend-claude]').fill('50');
+  failExpenseSave = true;
+  await expensePage
+    .locator('[data-period-billing=claude]')
+    .getByRole('button', { name: 'Save', exact: true })
+    .click();
+  await expensePage.locator('.billing-error').waitFor({ state: 'visible' });
+  assert.equal(
+    expenseSettings.monthlyBilling,
+    undefined,
+    'Failed saves do not update local settings',
+  );
+  failExpenseSave = false;
+  await expensePage
+    .locator('[data-period-billing=claude]')
+    .getByRole('button', { name: 'Save', exact: true })
+    .click();
+  await expensePage.waitForFunction(
+    () =>
+      !document.querySelector('.billing-error')?.textContent &&
+      !document.querySelector('[data-period-billing=claude] button')?.disabled,
+  );
+  assert.equal(expenseSettings.monthlyBilling['2026-08'].claude.apiSpend, 50);
+  assert.match(await expensePage.locator('.metric').nth(1).innerText(), /You paid[\s\S]*\$150.00/);
+  assert.match(await expensePage.locator('.metric').nth(3).innerText(), /2.00/);
+  await expensePage.locator('[data-expense-toggle=claude]').click();
+  await expensePage.locator('#card-plan-claude').selectOption('claude-pro-monthly');
+  await expensePage.locator('[name=mixed-claude]').check();
+  assert.equal(await expensePage.locator('[name=api-spend-claude]').inputValue(), '50');
+  await expensePage.locator('[name=api-spend-claude]').fill('10');
+  await expensePage
+    .locator('[data-period-billing=claude]')
+    .getByRole('button', { name: 'Save', exact: true })
+    .click();
+  await expensePage.waitForFunction(
+    () =>
+      !document.querySelector('.billing-error')?.textContent &&
+      !document.querySelector('[data-period-billing=claude] button')?.disabled,
+  );
+  assert.equal(expenseSettings.monthlyBilling['2026-08'].claude.mode, 'MIXED');
+  assert.match(await expensePage.locator('.metric').nth(1).innerText(), /\$130.00/);
+  assert.match(await expensePage.locator('.metric').nth(3).innerText(), /2.31/);
+  assert.match(
+    await expensePage.locator('#receipt-canvas').getAttribute('aria-label'),
+    /API Paid \$10.00[\s\S]*Total Paid \$130.00/,
+  );
+  await expensePage.reload();
+  await expensePage.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
+  assert.match(await expensePage.locator('.metric').nth(1).innerText(), /\$130.00/);
+  await expensePage.getByRole('button', { name: 'Month', exact: true }).click();
+  await expensePage.locator('#month-range [name=month]').fill('2026-09');
+  await expensePage
+    .locator('#month-range')
+    .getByRole('button', { name: 'Apply', exact: true })
+    .click();
+  await expensePage.waitForFunction(
+    () => document.querySelector('.selected-period')?.textContent === 'September 2026',
+  );
+  assert.match(await expensePage.locator('.metric').nth(1).innerText(), /Codex[\s\S]*Full month/);
+  assert.equal(await expensePage.locator('[name=api-spend-claude]').inputValue(), '');
+  await expensePage.getByRole('button', { name: 'Month', exact: true }).click();
+  await expensePage.locator('#month-range [name=month]').fill('2026-08');
+  await expensePage
+    .locator('#month-range')
+    .getByRole('button', { name: 'Apply', exact: true })
+    .click();
+  await expensePage.waitForFunction(
+    () => document.querySelector('.selected-period')?.textContent === 'August 2026',
+  );
+  assert.equal(await expensePage.locator('[name=api-spend-claude]').inputValue(), '10');
+  await expensePage.setViewportSize({ width: 1440, height: 1100 });
+  const heights = await expensePage
+    .locator('.provider-card')
+    .evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect().height));
+  assert.ok(Math.abs(heights[0] - heights[1]) < 2, 'Compact provider cards have equal height');
+  const beforeOpen = await expensePage
+    .locator('.chart')
+    .evaluate((el) => el.getBoundingClientRect().top);
+  await expensePage.locator('[data-expense-toggle=claude]').click();
+  assert.equal(
+    await expensePage.locator('.chart').evaluate((el) => el.getBoundingClientRect().top),
+    beforeOpen,
+  );
+  await expensePage.screenshot({
+    path: path.join(output, 'expenses-open-desktop.png'),
+    fullPage: true,
+  });
+  await expensePage.keyboard.press('Escape');
+  await expensePage.locator('[data-expense-toggle=claude]').evaluate((button) => button.blur());
+  await expensePage.screenshot({
+    path: path.join(output, 'expenses-mixed-desktop.png'),
+    fullPage: true,
+  });
+  await expensePage.setViewportSize({ width: 390, height: 950 });
+  assert.ok(await expensePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await expensePage.screenshot({
+    path: path.join(output, 'expenses-mixed-mobile.png'),
+    fullPage: true,
+  });
+  const expenseDownload = expensePage.waitForEvent('download');
+  await expensePage.getByRole('button', { name: 'Export PNG', exact: true }).click();
+  await (await expenseDownload).saveAs(path.join(output, 'expenses-mixed-receipt.png'));
+  // Both provider marks are decoded from bundled assets and printed in the PNG.
+  assert.ok(
+    await expensePage.evaluate(() =>
+      performance
+        .getEntriesByType('resource')
+        .some((r) => r.name.endsWith('/brands/codex-outline.svg')),
+    ),
+  );
+  assert.ok(
+    await expensePage.evaluate(() =>
+      performance
+        .getEntriesByType('resource')
+        .some((r) => r.name.endsWith('/brands/claude-code-clawd.svg')),
+    ),
+  );
+  const printedMarkPixels = await expensePage.locator('#receipt-canvas').evaluate((canvas) => {
+    const c = canvas.getContext('2d');
+    const count = (y, height, matches) => {
+      const data = c.getImageData(24 * 6, y * 6, 22 * 6, height * 6).data;
+      let n = 0;
+      for (let i = 0; i < data.length; i += 4) if (matches(data[i], data[i + 1], data[i + 2])) n++;
+      return n;
+    };
+    return {
+      codex: count(193, 22, (r, g, b) => r > 150 && g > 150 && b > 150),
+      claude: count(244, canvas.height / 6 - 244, (r, g) => r > 140 && r > g * 1.4),
+    };
+  });
+  assert.ok(printedMarkPixels.codex > 100, 'Codex mark printed on receipt');
+  assert.ok(printedMarkPixels.claude > 100, 'Claude Code mark printed on receipt');
+  // Monthly editing remains available in Settings for providers without a dashboard action.
+  await expensePage.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expensePage.locator('[data-expenses=claude]').click();
+  await expensePage.locator('#reset-expenses').click();
+  await expensePage.locator('#expenses-dialog').waitFor({ state: 'detached' });
+  assert.equal(expenseSettings.monthlyBilling['2026-08'], undefined);
+  await expensePage.getByRole('button', { name: 'Overview', exact: true }).click();
+  // No action is added for a provider using only API without another subscription.
+  expenseSettings.billing.codex = { mode: 'API', monthly: null };
+  await expensePage.reload();
+  await expensePage.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
+  assert.equal(await expensePage.locator('[data-period-billing]').count(), 0);
+  await expensePage.close();
   assert.deepEqual(errors, [], 'No browser errors');
   assert.deepEqual(external, [], 'No external application requests');
   assert.deepEqual(failures, [], 'All dashboard pages fit');
@@ -860,6 +1247,9 @@ try {
           'first-run onboarding',
           'direct subscription and no-subscription onboarding for both providers',
           'visible selected month on desktop and mobile',
+          'historical comparisons scoped to subscribed providers only',
+          'conditional provider expense actions',
+          'month-specific API and mixed billing, save rollback and reload',
           'zero-data onboarding without billing questions',
           'missing data is not zero',
           'period controls',

@@ -29,6 +29,7 @@ const example: ReceiptInput = {
       records: 1,
       tokens: 20530000,
       tokensPartial: false,
+      tokenBreakdown: { input: 19230000, output: 1300000, cacheRead: 15000000 },
       apiEquivalent: 201.36,
       knownSubtotal: 201.36,
     },
@@ -38,6 +39,7 @@ const example: ReceiptInput = {
       records: 1,
       tokens: 7840000,
       tokensPartial: false,
+      tokenBreakdown: { input: 440000, output: 400000, cacheRead: 7000000 },
       apiEquivalent: 86.06,
       knownSubtotal: 86.06,
     },
@@ -59,6 +61,7 @@ const example: ReceiptInput = {
   confidence: 'HIGH',
   demo: true,
 };
+const exampleReceipt = receiptModel(example, new Date(2026, 10, 1, 9, 30));
 document.querySelector('#landing')!.innerHTML = /* HTML */ `<header class="landing-nav">
     <a class="brand" href="#"><span class="brand-mark">${productMark}</span>${productNameMarkup}</a>
     <nav class="landing-links" aria-label="Site navigation">
@@ -150,7 +153,10 @@ document.querySelector('#landing')!.innerHTML = /* HTML */ `<header class="landi
             <canvas
               id="example-receipt"
               role="img"
-              aria-label="Illustrative ${product.name} receipt: API equivalent 287 dollars 42 cents, subscription 220 dollars, value 67 dollars 42 cents. Codex and Claude Code example data."
+              aria-label="Illustrative ${product.name} receipt. Codex and Claude Code example data. ${exampleReceipt.rows
+                .filter((row) => row.left)
+                .map((row) => row.left + ' ' + row.right)
+                .join('. ')}"
             ></canvas
             ><span>Export PNG ↓</span>
           </div>
@@ -188,7 +194,7 @@ document.querySelector('#landing')!.innerHTML = /* HTML */ `<header class="landi
 await receiptFonts();
 drawReceipt(
   document.querySelector<HTMLCanvasElement>('#example-receipt')!,
-  receiptModel(example, new Date(2026, 10, 1, 9, 30)),
+  exampleReceipt,
   'dark',
   'preview',
 );

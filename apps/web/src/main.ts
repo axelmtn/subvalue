@@ -1,7 +1,17 @@
 import './style.css';
 import { product, productMark, productNameMarkup } from '../../../packages/ui/src/brand.ts';
 document.title = product.name + ' — Local usage';
-import type { Settings, Provider, SourceStatus } from '../../../packages/core/src/types.ts';
+import type {
+  Settings,
+  Provider,
+  SourceStatus,
+  Billing,
+} from '../../../packages/core/src/types.ts';
+import {
+  billingForSelection,
+  withPeriodBilling,
+  showExpenseAction,
+} from '../../../packages/core/src/billing.ts';
 import {
   subscriptionPlans,
   subscriptionPlan,
@@ -60,6 +70,8 @@ const icon = (key: string) => {
     <path d="${paths[key] ?? paths.token}" />
   </svg>`;
 };
+let expenseProvider: Provider | null = null;
+let expensesSaving = false;
 let settings: Settings,
   sources: SourceStatus[] = [],
   summary: Summary,
@@ -521,6 +533,17 @@ function providerCards() {
                 >
               </div>
             </div>
+            ${
+              showExpenseAction(p, summary.providers)
+                ? `<button type="button" class="provider-expense-toggle" data-expense-toggle="${p.provider}" aria-controls="card-expenses-${p.provider}" aria-expanded="false"><span>Categorize expenses for this period</span> ${icon('next')}</button>
+                <div id="card-expenses-${p.provider}" class="provider-expenses-popover" popover aria-label="${name(p.provider)} expenses">
+                <div class="expenses-heading"><h2>${name(p.provider)} · Expenses</h2><button type="button" class="text-button" popovertarget="card-expenses-${p.provider}" popovertargetaction="hide" aria-label="Close expenses">×</button></div>
+                <form class="provider-expenses-form" data-period-billing="${p.provider}">
+              ${billingFields(p.provider, true, billingForSelection(settings, p.provider, summary.range), true, 'card-')}
+              <div class="expense-actions"><small>${esc(periodLabel())}</small><button class="button small" type="submit" ${expensesSaving ? 'disabled' : ''}>Save</button></div>
+              <p class="billing-error" role="alert" hidden></p></form></div>`
+                : ''
+            }
           </article>`,
       )
       .join('')}
@@ -570,7 +593,24 @@ function overview() {
     c = comparisonForDisplay(summary);
   const active = summary.providers.filter((p) => p.records);
   const months = fullCalendarMonths(summary.range),
-    showSubs = months !== null && active.length && active.every((p) => p.mode === 'SUBSCRIPTION');
+    showSubs = months !== null && active.length && (c.paid != null || c.scope.length > 0),
+    scopeLabel = c.scope.map(name).join(' + '),
+    first = summary.providers
+      .map((p) => p.first)
+      .filter((value): value is string => !!value)
+      .sort()[0],
+    last = summary.providers
+      .map((p) => p.last)
+      .filter((value): value is string => !!value)
+      .sort()
+      .at(-1),
+    historyDate = (value: string) =>
+      new Date(value).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        timeZone: 'UTC',
+      });
   return /* HTML */ `<div class="page-heading">
       <div class="overview-title">
         <h1>Overview</h1>
@@ -582,14 +622,26 @@ function overview() {
     <div class="overview-layout">
       <div class="overview-main">
         <div class="metrics ${showSubs ? '' : 'single'}">
-          ${metric('API equivalent', t.apiEquivalent === null ? (t.knownSubtotal !== null ? money(t.knownSubtotal) : t.records ? '—' : 'No data') : money(t.apiEquivalent), periodLabel(), 'api-metric')}${showSubs ? metric('Subscription', c.subscription === null ? 'Not set' : money(c.subscription), months === 1 ? 'Full month' : `${months} full months`) : ''}${showSubs ? metric(summary.historyPartial ? 'Observed value' : 'Value', c.value === null ? '—' : money(c.value, true), c.value === null ? 'Comparison unavailable' : summary.historyPartial ? 'Partial history' : '', c.value !== null ? (c.value >= 0 ? 'positive' : 'negative') : '') : ''}${showSubs ? metric('Value multiple', c.roi === null ? '—' : `${c.roi.toFixed(2)}<span class="multiply">×</span>`, c.breakEven ? `Break-even ${new Date(c.breakEven + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : c.roi === null ? 'Unavailable' : t.apiEquivalent === null ? 'Priced portion' : '') : ''}
+          ${metric('API equivalent', t.apiEquivalent === null ? (t.knownSubtotal !== null ? money(t.knownSubtotal) : t.records ? '—' : 'No data') : money(t.apiEquivalent), periodLabel(), 'api-metric')}${showSubs ? metric(c.apiSpend ? 'You paid' : c.subscription === 0 ? 'API paid' : 'Subscription', money(c.paid ?? c.subscription), [scopeLabel, months === 1 ? 'Full month' : `${months} full months`].filter(Boolean).join(' · ')) : ''}${showSubs ? metric(summary.historyPartial ? 'Observed value' : 'Value', c.value === null ? '—' : money(c.value, true), [scopeLabel, c.value === null ? 'Comparison unavailable' : summary.historyPartial ? 'Partial history' : ''].filter(Boolean).join(' · '), c.value !== null ? (c.value >= 0 ? 'positive' : 'negative') : '') : ''}${showSubs ? metric('Value multiple', c.roi === null ? '—' : `${c.roi.toFixed(2)}<span class="multiply">×</span>`, [scopeLabel, c.breakEven ? `Break-even ${new Date(c.breakEven + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : c.roi === null ? 'Unavailable' : t.apiEquivalent === null ? 'Priced portion' : ''].filter(Boolean).join(' · ')) : ''}
         </div>
         ${providerCards()}${chart()}
         <div class="overview-bottom">
           <span>${icon('shield')}Local analysis. Read-only sources.</span
           ><button class="text-button" data-page="settings">Manage sources ${icon('arrow')}</button>
         </div>
-        ${!t.records ? '<section class="panel empty-panel"><h2>No data for this period</h2><button class="text-button" data-page="settings">View sources →</button></section>' : ''}
+        ${
+          !t.records
+            ? /* HTML */ `<section class="panel empty-panel">
+                <h2>No data for this period</h2>
+                ${first && last ? `<p class="empty-history">Available history · ${esc(historyDate(first))} – ${esc(historyDate(last))}</p>` : ''}<button
+                  class="text-button"
+                  data-page="settings"
+                >
+                  View sources →
+                </button>
+              </section>`
+            : ''
+        }
       </div>
       ${receiptPanel(true)}
     </div>`;
@@ -615,21 +667,27 @@ function receiptPage() {
       </aside>
     </div>`;
 }
-function billingFields(p: Provider, firstRun = false) {
-  const b = settings.billing[p],
-    plan = subscriptionPlan(p, b.planId),
-    subscribed = b.mode === 'SUBSCRIPTION',
+function billingFields(
+  p: Provider,
+  firstRun = false,
+  b = settings.billing[p],
+  expenses = false,
+  prefix = '',
+) {
+  const plan = subscriptionPlan(p, b.planId),
+    subscribed = b.mode === 'SUBSCRIPTION' || b.mode === 'MIXED',
     selection = subscribed
       ? (plan?.id ?? 'custom')
       : b.mode === 'NO_SUBSCRIPTION' || b.mode === 'API'
         ? 'none'
         : '';
-  return /* HTML */ `<div class="billing-row">
-    <label class="provider-setting-name" for="plan-${p}">${name(p)}</label>
+  const api = !subscribed || b.mode === 'MIXED';
+  return /* HTML */ `<div class="billing-row" data-billing-provider="${p}">
+    <label class="provider-setting-name" for="${prefix}plan-${p}">${name(p)}</label>
     <div class="subscription-fields">
-      <label class="sr-only" for="plan-${p}">${name(p)} subscription plan</label
+      <label class="sr-only" for="${prefix}plan-${p}">${name(p)} subscription plan</label
       ><select
-        id="plan-${p}"
+        id="${prefix}plan-${p}"
         name="plan-${p}"
         data-subscription-plan="${p}"
         ${firstRun ? 'required data-first-run="true"' : ''}
@@ -637,7 +695,9 @@ function billingFields(p: Provider, firstRun = false) {
         <option value="" ${selection === '' ? 'selected' : ''}>
           ${firstRun ? 'Choose subscription' : 'Not set'}
         </option>
-        <option value="none" ${selection === 'none' ? 'selected' : ''}>No subscription</option>
+        <option value="none" ${selection === 'none' ? 'selected' : ''}>
+          No subscription · API
+        </option>
         ${subscriptionPlans
           .filter((plan) => plan.provider === p)
           .map(
@@ -650,7 +710,9 @@ function billingFields(p: Provider, firstRun = false) {
         <option value="custom" ${selection === 'custom' ? 'selected' : ''}>
           Custom amount
         </option></select
-      ><label class="amount-field billing-amount ${subscribed ? '' : 'hidden'}" id="amount-${p}"
+      ><label
+        class="amount-field billing-amount ${subscribed ? '' : 'hidden'}"
+        id="${prefix}amount-${p}"
         ><span class="sr-only">${name(p)} monthly subscription in USD</span><span>$</span
         ><input
           name="monthly-${p}"
@@ -665,8 +727,30 @@ function billingFields(p: Provider, firstRun = false) {
           placeholder="Amount"
         /><span>/ month</span></label
       >
+      <label class="mixed-field ${subscribed ? '' : 'hidden'}"
+        ><input
+          type="checkbox"
+          name="mixed-${p}"
+          data-mixed-billing="${p}"
+          ${b.mode === 'MIXED' ? 'checked' : ''}
+          ${subscribed ? '' : 'disabled'}
+        />Subscription + API</label
+      >
+      ${expenses ? `<label class="api-spend-field ${api ? '' : 'hidden'}"><span>API paid</span><div class="amount-field"><span>$</span><input name="api-spend-${p}" type="number" min="0" max="1000000" step="0.01" value="${b.apiSpend ?? (b.mode === 'MIXED' ? 0 : '')}" ${api ? '' : 'disabled'} placeholder="Not set" aria-label="${name(p)} API paid in USD"/></div></label>` : ''}
     </div>
   </div>`;
+}
+function expenseDialog() {
+  if (!expenseProvider) return '';
+  const billing = billingForSelection(settings, expenseProvider, summary.range);
+  return `<dialog id="expenses-dialog" aria-labelledby="expenses-title">
+    <div class="expenses-heading"><h2 id="expenses-title">${name(expenseProvider)} · Expenses</h2><button type="button" class="text-button" id="close-expenses" aria-label="Close expenses">×</button></div>
+    <form id="expenses-form">
+      <p class="expense-period">${esc(periodLabel())}</p>
+      ${billingFields(expenseProvider, true, billing, true, 'period-')}
+      <p class="expense-note">This period only · USD</p><p id="expense-error" role="alert" hidden></p>
+      <div class="expense-actions"><button type="button" class="text-button" id="reset-expenses">Use default</button><button class="button" type="submit">Save</button></div>
+    </form></dialog>`;
 }
 function settingsPage() {
   return /* HTML */ `<div class="page-heading">
@@ -740,7 +824,11 @@ function settingsPage() {
           <h2>Billing</h2>
           ${(['codex', 'claude'] as Provider[])
             .filter((p) => sources.find((s) => s.provider === p)?.detected)
-            .map((p) => billingFields(p))
+            .map(
+              (p) =>
+                billingFields(p) +
+                `<button type="button" class="text-button settings-expenses" data-expenses="${p}">${name(p)} · Monthly expenses</button>`,
+            )
             .join('')}
           <details class="compact-details">
             <summary>Details</summary>
@@ -760,8 +848,8 @@ function settingsPage() {
             </p>
             <p>
               These are your declarations, not inferred billing history. Amounts are in USD.
-              Comparisons use the full monthly price for full calendar months only. No subscription
-              means no subscription comparison.
+              Comparisons use full calendar months. API spend belongs to the selected month; missing
+              amounts stay unknown. Value multiple is API equivalent divided by total paid.
             </p>
           </details>
         </section>
@@ -836,6 +924,14 @@ function render() {
           </footer>
         </div>`
   }`;
+  app.insertAdjacentHTML('beforeend', expenseDialog());
+  const expense = document.querySelector<HTMLDialogElement>('#expenses-dialog');
+  if (expense) {
+    expense.addEventListener('cancel', () => {
+      expenseProvider = null;
+    });
+    expense.showModal();
+  }
   const canvas = document.querySelector<HTMLCanvasElement>('#receipt-canvas');
   if (canvas) drawReceipt(canvas, displayedReceipt, settings.receiptTheme ?? 'dark');
   const dialog = document.querySelector<HTMLDialogElement>('#onboarding');
@@ -845,24 +941,36 @@ function render() {
   }
   bind();
 }
-function readBilling(form: HTMLFormElement) {
+function billingFromForm(form: HTMLFormElement, p: Provider): Billing | null {
   const data = new FormData(form);
+  const selection = data.get(`plan-${p}`);
+  if (selection === null) return null;
+  const subscribed = selection !== 'none' && selection !== '',
+    mode = subscribed ? (data.has(`mixed-${p}`) ? 'MIXED' : 'SUBSCRIPTION') : 'API',
+    plan = subscriptionPlan(p, String(selection)),
+    amount = data.get(`monthly-${p}`),
+    api = data.get(`api-spend-${p}`);
+  return {
+    mode,
+    monthly: subscribed
+      ? (plan?.monthly ?? (amount !== '' && amount !== null ? Number(amount) : null))
+      : null,
+    ...(subscribed ? { planId: plan?.id ?? null } : {}),
+    ...(mode !== 'SUBSCRIPTION'
+      ? { apiSpend: api !== '' && api !== null ? Number(api) : null }
+      : {}),
+  };
+}
+function readBilling(form: HTMLFormElement) {
   for (const p of ['codex', 'claude'] as Provider[]) {
-    const selection = data.get(`plan-${p}`);
-    if (selection !== null) {
-      const mode =
-        selection === 'none' ? 'NO_SUBSCRIPTION' : selection === '' ? 'UNKNOWN' : 'SUBSCRIPTION';
-      const amount = data.get(`monthly-${p}`),
-        plan = subscriptionPlan(p, String(selection));
-      settings.billing[p] = {
-        mode,
-        monthly:
-          mode === 'SUBSCRIPTION'
-            ? (plan?.monthly ?? (amount !== '' && amount !== null ? Number(amount) : null))
-            : null,
-        ...(mode === 'SUBSCRIPTION' ? { planId: plan?.id ?? null } : {}),
-      };
-    }
+    const billing = billingFromForm(form, p);
+    if (!billing) continue;
+    // API payments are entered in the provider card for a specific period.
+    settings.billing[p] = {
+      mode: billing.mode,
+      monthly: billing.monthly,
+      ...(billing.planId !== undefined ? { planId: billing.planId } : {}),
+    };
   }
 }
 async function save() {
@@ -1019,19 +1127,110 @@ function bind() {
     const data = new FormData(e.currentTarget as HTMLFormElement);
     void choosePeriod('month', from, to, String(data.get('month')));
   });
-  document.querySelectorAll<HTMLSelectElement>('[data-subscription-plan]').forEach((select) =>
-    select.addEventListener('change', () => {
-      const p = select.dataset.subscriptionPlan as Provider,
-        plan = subscriptionPlan(p, select.value),
-        input = document.querySelector<HTMLInputElement>(`[name="monthly-${p}"]`)!;
-      const subscribed = select.value !== '' && select.value !== 'none';
-      document.querySelector(`#amount-${p}`)?.classList.toggle('hidden', !subscribed);
-      input.disabled = !subscribed;
-      input.required = select.dataset.firstRun === 'true' && subscribed;
-      input.readOnly = !!plan;
-      if (plan) input.value = plan.monthly.toFixed(2);
+  const updateBillingFields = (row: HTMLElement) => {
+    const select = row.querySelector<HTMLSelectElement>('[data-subscription-plan]')!;
+    const p = select.dataset.subscriptionPlan as Provider,
+      plan = subscriptionPlan(p, select.value),
+      input = row.querySelector<HTMLInputElement>(`[name="monthly-${p}"]`)!,
+      mixed = row.querySelector<HTMLInputElement>('[data-mixed-billing]')!;
+    const subscribed = select.value !== '' && select.value !== 'none';
+    row.querySelector('.billing-amount')?.classList.toggle('hidden', !subscribed);
+    row.querySelector('.mixed-field')?.classList.toggle('hidden', !subscribed);
+    input.disabled = mixed.disabled = !subscribed;
+    input.required = select.dataset.firstRun === 'true' && subscribed;
+    input.readOnly = !!plan;
+    if (plan) input.value = plan.monthly.toFixed(2);
+    const api = !subscribed || mixed.checked;
+    row.querySelector('.api-spend-field')?.classList.toggle('hidden', !api);
+    const apiInput = row.querySelector<HTMLInputElement>(`[name="api-spend-${p}"]`);
+    if (apiInput) {
+      apiInput.disabled = !api;
+      if (mixed.checked && subscribed && apiInput.value === '') apiInput.value = '0';
+    }
+  };
+  document.querySelectorAll<HTMLElement>('[data-billing-provider]').forEach((row) => {
+    row
+      .querySelectorAll('select, [data-mixed-billing]')
+      .forEach((field) => field.addEventListener('change', () => updateBillingFields(row)));
+  });
+  document.querySelectorAll<HTMLButtonElement>('[data-expenses]').forEach((button) =>
+    button.addEventListener('click', () => {
+      expenseProvider = button.dataset.expenses as Provider;
+      render();
     }),
   );
+  document.querySelectorAll<HTMLButtonElement>('[data-expense-toggle]').forEach((button) => {
+    const panel = document.getElementById(button.getAttribute('aria-controls')!)!;
+    panel.addEventListener('toggle', () =>
+      button.setAttribute('aria-expanded', String(panel.matches(':popover-open'))),
+    );
+    button.addEventListener('click', () => {
+      if (panel.matches(':popover-open')) {
+        panel.hidePopover();
+        return;
+      }
+      panel.showPopover();
+      const bounds = button.getBoundingClientRect();
+      panel.style.left =
+        Math.max(
+          16,
+          Math.min(innerWidth - panel.offsetWidth - 16, bounds.right - panel.offsetWidth),
+        ) + 'px';
+      panel.style.top =
+        Math.max(16, Math.min(innerHeight - panel.offsetHeight - 16, bounds.bottom + 8)) + 'px';
+      panel.querySelector<HTMLSelectElement>('select')?.focus();
+    });
+  });
+  document.querySelector('#close-expenses')?.addEventListener('click', () => {
+    expenseProvider = null;
+    render();
+  });
+  const persistExpenses = async (provider: Provider, form: HTMLFormElement, reset = false) => {
+    if (expensesSaving) return;
+    expensesSaving = true;
+    const billing = billingFromForm(form, provider),
+      previous = settings,
+      next = withPeriodBilling(settings, provider, summary.range, reset ? null : billing);
+    document
+      .querySelectorAll<HTMLButtonElement>('[data-period-billing] button, #expenses-form button')
+      .forEach((button) => (button.disabled = true));
+    try {
+      await api('/api/settings', 'POST', next);
+      settings = next;
+      await load();
+      expenseProvider = null;
+      expensesSaving = false;
+      render();
+      toast('Saved locally');
+    } catch {
+      settings = previous;
+      expensesSaving = false;
+      const error = form.querySelector<HTMLElement>('.billing-error, #expense-error')!;
+      error.hidden = false;
+      error.textContent = 'Unable to save expenses';
+      document
+        .querySelectorAll<HTMLButtonElement>('[data-period-billing] button, #expenses-form button')
+        .forEach((button) => (button.disabled = false));
+    }
+  };
+  document.querySelectorAll<HTMLFormElement>('[data-period-billing]').forEach((form) =>
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      void persistExpenses(form.dataset.periodBilling as Provider, form);
+    }),
+  );
+  document.querySelector<HTMLFormElement>('#expenses-form')?.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (expenseProvider) void persistExpenses(expenseProvider, e.currentTarget as HTMLFormElement);
+  });
+  document.querySelector('#reset-expenses')?.addEventListener('click', () => {
+    if (expenseProvider)
+      void persistExpenses(
+        expenseProvider,
+        document.querySelector<HTMLFormElement>('#expenses-form')!,
+        true,
+      );
+  });
   document
     .querySelector<HTMLFormElement>('#settings-form')
     ?.addEventListener('submit', async (e) => {

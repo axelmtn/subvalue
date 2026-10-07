@@ -44,6 +44,10 @@ compile(
   path.join(output, 'public', 'packages/core/src/calendar.js'),
 );
 compile(
+  'packages/core/src/billing.ts',
+  path.join(output, 'public', 'packages/core/src/billing.js'),
+);
+compile(
   'packages/core/src/coverage.ts',
   path.join(output, 'public', 'packages/core/src/coverage.js'),
 );

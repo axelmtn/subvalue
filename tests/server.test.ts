@@ -206,6 +206,69 @@ test('summary cache reuses normalized history and observes local and external SQ
     store.close();
   }
 });
+
+test('billing changes and month navigation preserve older normalized history across relaunch', async () => {
+  fs.mkdirSync('artifacts', { recursive: true });
+  const directory = fs.mkdtempSync(path.resolve('artifacts/historical-billing-'));
+  let store = new Store(directory),
+    running;
+  const periods = [
+    ['2026-07', 2],
+    ['2026-08', 3],
+    ['2026-09', 4],
+  ] as const;
+  for (const [month, count] of periods)
+    for (let i = 0; i < count; i++)
+      store.put(
+        record(i === 0 ? 'claude' : 'codex', {
+          id: month + '-' + i,
+          timestamp: month + '-15T12:00:00Z',
+        }),
+        'fixture',
+      );
+  store.save('sources', statuses());
+  const settings = defaultSettings();
+  settings.onboarded = true;
+  settings.billing.codex = { mode: 'SUBSCRIPTION', monthly: 100 };
+  settings.billing.claude = { mode: 'NO_SUBSCRIPTION', monthly: null };
+  try {
+    for (let launch = 0; launch < 2; launch++) {
+      running = await startServer({ port: 0, publicDirectory: 'packages/cli/dist/public', store });
+      const bootstrap = await (await fetch(running.url + '/api/bootstrap')).json();
+      if (launch === 0) {
+        const response = await fetch(running.url + '/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Subvalue-Token': bootstrap.token },
+          body: JSON.stringify(settings),
+        });
+        assert.equal(response.status, 200);
+      } else assert.deepEqual(bootstrap.settings.billing, settings.billing);
+      for (const [month, count] of periods) {
+        const summary = await (
+          await fetch(running.url + '/api/summary?period=month&month=' + month)
+        ).json();
+        assert.equal(summary.total.records, count);
+        assert.equal(summary.providers[0].comparison.subscription, 100);
+        assert.equal(summary.providers[1].comparison.subscription, 0);
+        assert.equal(summary.providers[1].comparison.paid, null);
+        assert.equal(summary.providers[0].first.slice(0, 10), '2026-07-15');
+      }
+      const empty = await (
+        await fetch(running.url + '/api/summary?period=month&month=2026-06')
+      ).json();
+      assert.equal(empty.total.records, 0);
+      assert.equal(empty.total.apiEquivalent, null);
+      assert.equal(store.records().length, 9);
+      await running.close();
+      running = undefined;
+      store.close();
+      if (launch === 0) store = new Store(directory);
+    }
+  } finally {
+    await running?.close();
+    if (store.db.isOpen) store.close();
+  }
+});
 test('local server serves dashboard, safe summary and settings', async () => {
   const s = await startServer({ port: 0, publicDirectory: 'packages/cli/dist/public', demo: true });
   try {
@@ -300,6 +363,74 @@ test('settings validation rejects malformed JSON shapes without accepting partia
       billing: { ...defaultSettings().billing, codex: invalid },
     };
     assert.throws(() => validateSettings(settings));
+  }
+});
+
+test('monthly expenses survive relaunch, defaults changes and receipt color saves without changing usage', async () => {
+  fs.mkdirSync('artifacts', { recursive: true });
+  const directory = fs.mkdtempSync(path.resolve('artifacts/monthly-expenses-'));
+  let store = new Store(directory);
+  const settings = defaultSettings();
+  settings.onboarded = true;
+  settings.monthlyBilling = {
+    '2026-08': { claude: { mode: 'SUBSCRIPTION', monthly: 20 } },
+    '2026-09': { claude: { mode: 'API', monthly: null, apiSpend: 12 } },
+  };
+  store.put(record('claude', { id: 'august', timestamp: '2026-08-15T12:00:00Z' }), 'fixture');
+  store.put(record('claude', { id: 'september', timestamp: '2026-09-15T12:00:00Z' }), 'fixture');
+  try {
+    for (let launch = 0; launch < 2; launch++) {
+      const running = await startServer({
+        port: 0,
+        publicDirectory: 'packages/cli/dist/public',
+        store,
+      });
+      try {
+        const bootstrap = await (await fetch(running.url + '/api/bootstrap')).json();
+        if (launch === 0) {
+          const saved = await fetch(running.url + '/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Subvalue-Token': bootstrap.token },
+            body: JSON.stringify(settings),
+          });
+          assert.equal(saved.status, 200);
+        } else {
+          assert.deepEqual(bootstrap.settings.monthlyBilling, settings.monthlyBilling);
+          settings.billing.claude = { mode: 'SUBSCRIPTION', monthly: 100 };
+          settings.receiptTheme = 'light';
+          assert.equal(
+            (
+              await fetch(running.url + '/api/settings', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Subvalue-Token': bootstrap.token,
+                },
+                body: JSON.stringify(settings),
+              })
+            ).status,
+            200,
+          );
+        }
+        for (const [month, expected] of [
+          ['2026-08', 20],
+          ['2026-09', 12],
+        ] as const) {
+          const summary = await (
+            await fetch(running.url + '/api/summary?period=month&month=' + month)
+          ).json();
+          assert.equal(summary.providers[1].comparison.paid, expected);
+          assert.equal(summary.providers[1].records, 1);
+        }
+        assert.equal(store.records().length, 2);
+      } finally {
+        await running.close();
+      }
+      store.close();
+      if (launch === 0) store = new Store(directory);
+    }
+  } finally {
+    if (store.db.isOpen) store.close();
   }
 });
 test('server never accepts arbitrary filesystem paths', async () => {

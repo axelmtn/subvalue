@@ -41,7 +41,7 @@ test('manual subscriptions and old settings remain supported; non-subscription m
   assert.deepEqual(validateSettings(s).billing.codex, s.billing.codex);
   for (const mode of ['NO_SUBSCRIPTION', 'API', 'MIXED', 'UNKNOWN'] as const) {
     s.billing.codex = { mode, monthly: 200 };
-    assert.equal(validateSettings(s).billing.codex.monthly, null);
+    assert.equal(validateSettings(s).billing.codex.monthly, mode === 'MIXED' ? 200 : null);
   }
   s.billing.codex = { mode: 'SUBSCRIPTION', monthly: 20, planId: 'unknown' };
   assert.throws(() => validateSettings(s), /plan/);

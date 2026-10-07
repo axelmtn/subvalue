@@ -84,13 +84,16 @@ test('a provider without a subscription does not enter the combined subscription
   );
   assert.ok(s.total.apiEquivalent! > 0);
   assert.equal(s.providers[0].comparison.subscription, 20);
-  assert.equal(s.providers[1].comparison.subscription, null);
+  assert.equal(s.providers[1].comparison.subscription, 0);
+  assert.equal(s.providers[1].comparison.paid, null);
   assert.equal(s.total.comparison.roi, null);
   assert.equal(s.total.comparison.value, null);
 });
-test('unknown billing stays unknown', () => {
+test('unconfigured billing defaults to API without inventing an actual payment', () => {
   const s = summarize([record()], statuses(), defaultSettings(), range, prices(), true);
-  assert.equal(s.providers[0].mode, 'UNKNOWN');
+  assert.equal(s.providers[0].mode, 'API');
+  assert.equal(s.providers[0].needsBilling, true);
+  assert.equal(s.providers[0].comparison.paid, null);
   assert.equal(s.total.comparison.roi, null);
 });
 test('subscription comparisons correctly calculate value and ROI', () => {

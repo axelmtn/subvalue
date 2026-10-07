@@ -1,10 +1,11 @@
 import type { Summary, ProviderSummary, Comparison } from '../../core/src/summary.ts';
+import type { Provider } from '../../core/src/types.ts';
 import { fullCalendarMonths } from '../../core/src/calendar.ts';
 import { formatPricingCoverage } from '../../core/src/coverage.ts';
-import { product } from '../../ui/src/brand.ts';
+import { product, wordmarkSvg } from '../../ui/src/brand.ts';
 /** Only public, aggregated fields needed by the receipt and its example. */
 export type ReceiptInput = Pick<Summary, 'range' | 'historyPartial' | 'confidence' | 'demo'> & {
-  providers: Pick<
+  providers: (Pick<
     ProviderSummary,
     | 'provider'
     | 'records'
@@ -14,7 +15,8 @@ export type ReceiptInput = Pick<Summary, 'range' | 'historyPartial' | 'confidenc
     | 'tokenBreakdown'
     | 'apiEquivalent'
     | 'knownSubtotal'
-  >[];
+  > &
+    Partial<Pick<ProviderSummary, 'mode' | 'comparison'>>)[];
   total: Pick<Summary['total'], 'apiEquivalent' | 'knownSubtotal' | 'priceCoverage' | 'comparison'>;
 };
 export interface ReceiptRow {
@@ -37,23 +39,67 @@ export const money = (n: number | null, signed = false): string =>
     ? 'Unavailable'
     : `${signed && n >= 0 ? '+' : ''}${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n)}`;
 /** Compare only the displayed priced amount; preserve uncertainty and billing eligibility. */
-export function comparisonForDisplay(s: ReceiptInput): Comparison {
+export interface DisplayComparison extends Comparison {
+  /** Nonempty when some active providers have not supplied their expenses. */
+  scope: Provider[];
+  apiEquivalent: number | null;
+}
+export function comparisonForDisplay(s: ReceiptInput): DisplayComparison {
   const comparison = s.total.comparison,
     amount = s.total.apiEquivalent ?? s.total.knownSubtotal;
   if (fullCalendarMonths(s.range) === null)
     return {
       ...comparison,
       subscription: null,
+      apiSpend: null,
+      paid: null,
       value: null,
       roi: null,
       breakEven: null,
       outcome: 'neutral',
+      scope: [],
+      apiEquivalent: null,
     };
-  if (amount === null || comparison.subscription === null) return comparison;
+  const paidFor = (p: ReceiptInput['providers'][number]) =>
+    p.comparison?.paid !== undefined
+      ? p.comparison.paid
+      : p.mode === 'SUBSCRIPTION'
+        ? (p.comparison?.subscription ?? null)
+        : null;
+  const active = s.providers.filter((p) => p.records > 0),
+    included = active.filter((p) => paidFor(p) !== null);
+  if (included.length > 0 && included.length < active.length) {
+    const subscription = included.reduce((n, p) => n + (p.comparison?.subscription ?? 0), 0),
+      apiSpend = included.reduce((n, p) => n + (p.comparison?.apiSpend ?? 0), 0),
+      paid = included.reduce((n, p) => n + paidFor(p)!, 0),
+      priced = included.map((p) => p.apiEquivalent ?? p.knownSubtotal),
+      scopedAmount = priced.every((cost) => cost !== null)
+        ? priced.reduce<number>((n, cost) => n + cost!, 0)
+        : null,
+      certain = !s.historyPartial && included.every((p) => p.apiEquivalent !== null);
+    return {
+      subscription,
+      apiSpend,
+      paid,
+      value: scopedAmount === null ? null : scopedAmount - paid,
+      roi: scopedAmount === null || paid <= 0 ? null : scopedAmount / paid,
+      outcome: certain && included.length === 1 ? included[0].comparison!.outcome : 'neutral',
+      breakEven: certain && included.length === 1 ? included[0].comparison!.breakEven : null,
+      reason: 'Providers with declared expenses only',
+      scope: included.map((p) => p.provider),
+      apiEquivalent: scopedAmount,
+    };
+  }
+  const paid = comparison.paid === undefined ? comparison.subscription : comparison.paid;
+  if (amount === null || paid === null)
+    return { ...comparison, paid, scope: [], apiEquivalent: amount };
   return {
     ...comparison,
-    value: comparison.value ?? amount - comparison.subscription,
-    roi: comparison.roi ?? (comparison.subscription > 0 ? amount / comparison.subscription : null),
+    paid,
+    value: comparison.value ?? amount - paid,
+    roi: comparison.roi ?? (paid > 0 ? amount / paid : null),
+    scope: [],
+    apiEquivalent: amount,
   };
 }
 export function receiptModel(s: ReceiptInput, generatedAt = new Date()): ReceiptModel {
@@ -86,12 +132,33 @@ export function receiptModel(s: ReceiptInput, generatedAt = new Date()): Receipt
     strong: true,
   });
   const comp = comparisonForDisplay(s);
-  if (comp.subscription !== null)
+  if (comp.scope.length)
+    rows.push(
+      { left: '', right: '' },
+      {
+        left:
+          comp.scope
+            .map((provider) => (provider === 'codex' ? 'CODEX' : 'CLAUDE CODE'))
+            .join(' + ') + ' COMPARISON',
+        right: '',
+        strong: true,
+      },
+      {
+        left: 'API Equivalent',
+        right: comp.apiEquivalent === null ? '—' : money(comp.apiEquivalent),
+      },
+    );
+  if (comp.subscription != null && comp.subscription > 0)
     rows.push({ left: 'Subscription Cost', right: money(comp.subscription) });
+  if (comp.apiSpend != null && (comp.apiSpend > 0 || comp.subscription === 0)) {
+    rows.push({ left: 'API Paid', right: money(comp.apiSpend) });
+    if (comp.subscription != null && comp.subscription > 0)
+      rows.push({ left: 'Total Paid', right: money(comp.paid ?? null), strong: true });
+  }
   const value = comp.value;
   if (value !== null)
     rows.push({
-      left: 'You Saved',
+      left: 'Total Saved',
       right: money(value, true),
       accent: value >= 0 ? 'positive' : 'negative',
       strong: true,
@@ -179,7 +246,52 @@ export async function receiptFonts(): Promise<void> {
     await Promise.all([
       document.fonts.load('14px "Plex Mono"'),
       document.fonts.load('600 14px "Plex Mono"'),
+      receiptBrandAssets(document),
     ]);
+}
+// Decode the same bundled product marks used by the dashboard before drawing.
+// Canvas previews and exported PNGs therefore include identical local artwork.
+const brandAssets = new WeakMap<Document, Promise<Record<Provider, HTMLImageElement>>>();
+const decodedBrands = new WeakMap<Document, Record<Provider, HTMLImageElement>>();
+const decodedWordmarks = new WeakMap<Document, Record<'dark' | 'light', HTMLImageElement>>();
+function receiptBrandAssets(document: Document): Promise<Record<Provider, HTMLImageElement>> {
+  let assets = brandAssets.get(document);
+  if (!assets) {
+    assets = Promise.all(
+      ['codex-outline.svg', 'claude-code-clawd.svg'].map(async (file) => {
+        const image = document.createElement('img');
+        image.src = `/brands/${file}`;
+        await image.decode();
+        return image;
+      }),
+    ).then(async ([codex, claude]) => {
+      const svg = wordmarkSvg();
+      if (svg) {
+        const dimensions = /viewBox="0 0 (\d+) (\d+)"/.exec(svg)!;
+        const images = await Promise.all(
+          (['dark', 'light'] as const).map(async (theme) => {
+            const image = document.createElement('img');
+            const artwork = svg
+              .replace('<svg ', `<svg width="${dimensions[1]}" height="${dimensions[2]}" `)
+              .replace('fill="currentColor"', `fill="${theme === 'dark' ? '#eef2f4' : '#22272d'}"`)
+              .replaceAll(
+                'class="brand-name-accent"',
+                `fill="${theme === 'dark' ? '#37ec85' : '#137744'}"`,
+              );
+            image.src = 'data:image/svg+xml,' + encodeURIComponent(artwork);
+            await image.decode();
+            return image;
+          }),
+        );
+        decodedWordmarks.set(document, { dark: images[0], light: images[1] });
+      }
+      const marks = { codex, claude };
+      decodedBrands.set(document, marks);
+      return marks;
+    });
+    brandAssets.set(document, assets);
+  }
+  return assets;
 }
 const paperTextures = new WeakMap<Document, HTMLCanvasElement>();
 function paperTexture(canvas: HTMLCanvasElement): HTMLCanvasElement {
@@ -202,6 +314,8 @@ function paperTexture(canvas: HTMLCanvasElement): HTMLCanvasElement {
   paperTextures.set(document, texture);
   return texture;
 }
+const isTokenRow = (row: ReceiptRow) =>
+  ['Input Tokens', 'Output Tokens', 'Cache Reads', 'Tokens', 'Known Tokens'].includes(row.left);
 const rowHeight = (row: ReceiptRow) =>
   !row.left && !row.right
     ? 34
@@ -211,7 +325,9 @@ const rowHeight = (row: ReceiptRow) =>
         ? 46
         : row.accent
           ? 32
-          : 28;
+          : isTokenRow(row)
+            ? 24
+            : 28;
 export function drawReceipt(
   canvas: HTMLCanvasElement,
   model: ReceiptModel,
@@ -313,7 +429,13 @@ export function drawReceipt(
     c.stroke();
     c.setLineDash([]);
   };
-  text(product.name, width / 2, 64, 29, '#f0f0ef', 'center');
+  const wordmark = decodedWordmarks.get(canvas.ownerDocument)?.[theme];
+  if (wordmark) {
+    // Compact, centered lettering only; no symbol or terminal cursor on the paper.
+    const logoWidth = 156,
+      logoHeight = logoWidth * (wordmark.naturalHeight / wordmark.naturalWidth);
+    c.drawImage(wordmark, (width - logoWidth) / 2, 64 - logoHeight, logoWidth, logoHeight);
+  } else text(product.name, width / 2, 64, 29, '#f0f0ef', 'center');
   text('USAGE RECEIPT', width / 2, 92, 13, '#b6b8bd', 'center');
   if (model.demo) text('EXAMPLE DATA', width / 2, 112, 10, '#a3a5a9', 'center');
   text('Period', left, 137, 12.5, '#b4b5b9');
@@ -331,7 +453,8 @@ export function drawReceipt(
     }
     const provider = !row.right,
       multiple = row.left === 'VALUE MULTIPLE';
-    const label = provider ? (row.left === 'CODEX' ? 'Codex' : 'Claude Code') : row.left;
+    const label =
+      row.left === 'CODEX' ? 'Codex' : row.left === 'CLAUDE CODE' ? 'Claude Code' : row.left;
     const color =
       row.accent === 'positive'
         ? '#37ec85'
@@ -340,18 +463,37 @@ export function drawReceipt(
           : row.strong
             ? '#e1e2e4'
             : '#bdc0c6';
-    const valueSize = multiple ? 25 : row.accent ? 22 : row.strong ? 18 : 16;
+    const tokenRow = isTokenRow(row);
+    const valueSize = multiple ? 25 : row.accent ? 22 : row.strong ? 18 : tokenRow ? 13 : 16;
     c.font = `${printSize(valueSize)}px ${mono}`;
     const valueWidth = c.measureText(row.right).width;
+    const brand = row.left === 'CODEX' ? 'codex' : row.left === 'CLAUDE CODE' ? 'claude' : null;
+    const mark = brand && decodedBrands.get(canvas.ownerDocument)?.[brand];
+    let labelLeft = left;
+    if (mark) {
+      const size = 22;
+      const markHeight = size * (mark.naturalHeight / mark.naturalWidth);
+      if (brand === 'codex') {
+        const tinted = canvas.ownerDocument.createElement('canvas');
+        tinted.width = tinted.height = size * scale;
+        const context = tinted.getContext('2d')!;
+        context.drawImage(mark, 0, 0, tinted.width, tinted.height);
+        context.globalCompositeOperation = 'source-in';
+        context.fillStyle = ink('#e1e2e4');
+        context.fillRect(0, 0, tinted.width, tinted.height);
+        c.drawImage(tinted, left, y - 17, size, size);
+      } else c.drawImage(mark, left, y - 14, size, markHeight);
+      labelLeft += size + 8;
+    }
     text(
       label,
-      left,
+      labelLeft,
       y,
-      multiple ? 17 : provider ? 17 : row.strong ? 14 : 14,
+      multiple ? 17 : provider ? 17 : tokenRow ? 12 : 14,
       multiple ? '#e1e2e4' : color,
       'left',
       provider,
-      provider ? width - 48 : width - 62 - valueWidth,
+      provider ? right - labelLeft : width - 62 - valueWidth,
     );
     text(row.right, right, y, valueSize, row.accent ? color : '#e3e4e7', 'right', row.strong, 160);
     y += step;

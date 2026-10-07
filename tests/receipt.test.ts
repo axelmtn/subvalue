@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { receiptModel, comparisonForDisplay, money } from '../packages/receipt/src/index.ts';
 import { summarize, dateRange } from '../packages/core/src/summary.ts';
 import { defaultSettings } from '../packages/core/src/types.ts';
-import { record, prices, statuses } from './helpers.ts';
+import { record, price, prices, statuses } from './helpers.ts';
 const range = dateRange('month', new Date(2026, 9, 4, 12));
 
 test('receipt dates preserve the selected calendar days across timezones', () => {
@@ -152,7 +152,7 @@ test('partial-period receipt retains known API amounts without subscription comp
   assert.equal(summary.total.comparison.roi, null);
   assert.equal(summary.total.comparison.subscription, null);
   assert.ok(!receipt.rows.some((r) => ['VALUE MULTIPLE', 'Subscription Cost'].includes(r.left)));
-  assert.ok(!receipt.rows.some((r) => r.left === 'You Saved'));
+  assert.ok(!receipt.rows.some((r) => r.left === 'Total Saved'));
   assert.match(receipt.confidence, /50% priced/);
   assert.equal(receipt.outcome, '');
 });
@@ -183,7 +183,10 @@ test('Overview and receipt share the observed comparison without pricing unknown
   assert.equal(summary.total.comparison.value, null);
   assert.equal(display.value, summary.total.knownSubtotal! - display.subscription!);
   assert.equal(display.roi, summary.total.knownSubtotal! / display.subscription!);
-  assert.equal(receipt.rows.find((r) => r.left === 'You Saved')?.right, money(display.value, true));
+  assert.equal(
+    receipt.rows.find((r) => r.left === 'Total Saved')?.right,
+    money(display.value, true),
+  );
   assert.equal(
     receipt.rows.find((r) => r.left === 'VALUE MULTIPLE')?.right,
     display.roi!.toFixed(2) + '×',
@@ -211,6 +214,118 @@ test('observed comparison preserves unknown amounts and ineligible billing modes
     assert.equal(display.value, null);
     assert.equal(display.roi, null);
   }
+});
+
+test('historical subscription comparisons exclude an active provider without a subscription', () => {
+  const selected = dateRange('month', new Date(2026, 7, 15)),
+    all = prices([price(), price({ provider: 'claude' })]);
+  for (const paid of ['codex', 'claude'] as const) {
+    const other = paid === 'codex' ? 'claude' : 'codex',
+      settings = defaultSettings();
+    settings.billing[paid] = { mode: 'SUBSCRIPTION', monthly: 100 };
+    settings.billing[other] = { mode: 'NO_SUBSCRIPTION', monthly: null };
+    const summary = summarize(
+      [
+        record(paid, {
+          id: 'paid',
+          timestamp: '2026-08-15T12:00:00Z',
+          input_tokens: 0,
+          cached_input_tokens: 0,
+          output_tokens: 62469101,
+          total_tokens: 62469101,
+        }),
+        record(other, {
+          id: 'other',
+          timestamp: '2026-08-15T12:00:00Z',
+          input_tokens: 0,
+          cached_input_tokens: 0,
+          output_tokens: 1150697,
+          total_tokens: 1150697,
+        }),
+      ],
+      statuses(),
+      settings,
+      selected,
+      all,
+    );
+    const display = comparisonForDisplay(summary),
+      receipt = receiptModel(summary);
+    assert.equal(summary.total.comparison.subscription, null, 'No misleading global comparison');
+    assert.deepEqual(display.scope, [paid]);
+    assert.equal(display.subscription, 100);
+    assert.ok(Math.abs(display.apiEquivalent! - 624.69101) < 1e-8);
+    assert.ok(Math.abs(display.value! - 524.69101) < 1e-8);
+    assert.ok(Math.abs(display.roi! - 6.2469101) < 1e-8);
+    assert.equal(display.outcome, 'neutral');
+    assert.equal(display.breakEven, null);
+    assert.equal(receipt.rows.find((row) => row.left === 'Total API Equivalent')?.right, '$636.20');
+    assert.equal(receipt.rows.find((row) => row.left === 'API Equivalent')?.right, '$624.69');
+    assert.equal(receipt.rows.find((row) => row.left === 'Subscription Cost')?.right, '$100.00');
+    assert.equal(receipt.rows.find((row) => row.left === 'VALUE MULTIPLE')?.right, '6.25×');
+    assert.ok(
+      receipt.rows.some(
+        (row) => row.left === (paid === 'codex' ? 'CODEX' : 'CLAUDE CODE') + ' COMPARISON',
+      ),
+    );
+  }
+});
+
+test('scoped comparisons preserve partial pricing, unknown amounts and full-month eligibility', () => {
+  const settings = defaultSettings();
+  settings.billing.codex = { mode: 'SUBSCRIPTION', monthly: 100 };
+  settings.billing.claude = { mode: 'NO_SUBSCRIPTION', monthly: null };
+  const all = prices([price(), price({ provider: 'claude' })]),
+    paid = record('codex', {
+      id: 'paid',
+      input_tokens: 0,
+      cached_input_tokens: 0,
+      output_tokens: 20000000,
+      total_tokens: 20000000,
+    }),
+    other = record('claude', { id: 'other', output_tokens: 10000000, total_tokens: 10000100 }),
+    unknown = record('codex', { id: 'unknown', model_raw: 'unknown' });
+  const partial = comparisonForDisplay(
+    summarize([paid, unknown, other], statuses(), settings, range, all),
+  );
+  assert.equal(partial.apiEquivalent, 200);
+  assert.equal(partial.roi, 2);
+  assert.equal(partial.value, 100);
+  assert.equal(partial.outcome, 'neutral');
+  const unpriced = comparisonForDisplay(
+    summarize([unknown, other], statuses(), settings, range, all),
+  );
+  assert.equal(unpriced.apiEquivalent, null);
+  assert.equal(unpriced.roi, null);
+  assert.equal(unpriced.value, null);
+  for (const preset of ['7d', '30d']) {
+    const short = comparisonForDisplay(
+      summarize([paid, other], statuses(), settings, dateRange(preset, new Date(2026, 9, 4)), all),
+    );
+    assert.equal(short.subscription, null);
+    assert.equal(short.roi, null);
+    assert.deepEqual(short.scope, []);
+  }
+  const multipleMonths = comparisonForDisplay(
+    summarize(
+      [paid, other],
+      statuses(),
+      settings,
+      dateRange('custom', new Date(2026, 10, 5), '2026-09-01', '2026-10-31'),
+      all,
+    ),
+  );
+  assert.equal(multipleMonths.subscription, 200);
+  assert.equal(multipleMonths.roi, 1);
+  settings.billing.codex.monthly = 0;
+  assert.equal(
+    comparisonForDisplay(summarize([paid, other], statuses(), settings, range, all)).roi,
+    null,
+  );
+  settings.billing.codex.monthly = null;
+  assert.equal(
+    comparisonForDisplay(summarize([paid, other], statuses(), settings, range, all)).subscription,
+    null,
+  );
 });
 
 test('receipt multiplier needs a known amount and a positive subscription for all active providers', () => {
@@ -242,9 +357,13 @@ test('receipt multiplier needs a known amount and a positive subscription for al
   settings.billing.codex.monthly = 100;
   settings.billing.claude = { mode: 'MIXED', monthly: null };
   const all = prices([prices().prices[0], { ...prices().prices[0], provider: 'claude' }]);
-  assert.ok(
-    !receiptModel(
-      summarize([record(), record('claude', { id: 'claude' })], statuses(), settings, range, all),
-    ).rows.some((r) => r.left === 'VALUE MULTIPLE'),
+  const summary = summarize(
+    [record(), record('claude', { id: 'claude' })],
+    statuses(),
+    settings,
+    range,
+    all,
   );
+  assert.deepEqual(comparisonForDisplay(summary).scope, ['codex']);
+  assert.equal(summary.total.comparison.roi, null);
 });

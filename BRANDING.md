@@ -15,7 +15,7 @@ Display identity lives in `packages/ui/src/brand.ts`. Navigation, landing, gener
 
 The secondary wordmark is original 5×7 terminal lettering: SUB in off-white and VALUE in electric green. The landing title alone includes a blinking underscore cursor; it stays visible without blinking for reduced-motion preferences. Navigation, the preview header and the privacy header omit the cursor. They share the same letter vectors. The build produces cursor-free `logo/wordmark.svg` and `logo/wordmark-monochrome.svg`; no extra font or remote asset is needed. The artwork is covered by the project's MIT license. The display name remains centralized; unsupported rename characters fall back to ordinary text. The primary symbol remains independent.
 
-The receipt intentionally uses a text header, matching the supplied close-up. Its decorative bottom bars are a fixed generic pattern, not a machine-readable payment code and not derived from private metadata.
+The receipt uses compact, centered pixel lettering without the standalone symbol or cursor. The same wordmark vectors are drawn locally in the dashboard, PNG exports and public example, with dark ink on white paper. Its decorative bottom bars are a fixed generic pattern, not a machine-readable payment code and not derived from private metadata.
 
 ## Official provider artwork
 

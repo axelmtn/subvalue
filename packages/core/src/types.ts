@@ -1,7 +1,13 @@
 export type Provider = 'codex' | 'claude';
 export type Quality = 'HIGH' | 'MEDIUM' | 'LOW' | 'INCOMPLETE';
-// API and MIXED remain readable for existing local settings.
 export type BillingMode = 'UNKNOWN' | 'SUBSCRIPTION' | 'NO_SUBSCRIPTION' | 'API' | 'MIXED';
+export interface Billing {
+  mode: BillingMode;
+  monthly: number | null;
+  planId?: string | null;
+  /** Actual API spend for one calendar month, never inferred from token prices. */
+  apiSpend?: number | null;
+}
 export interface UsageRecord {
   id: string;
   timestamp: string | null;
@@ -60,7 +66,9 @@ export interface Settings {
   currency: 'USD';
   include: Record<Provider, boolean>;
   receiptTheme?: 'dark' | 'light';
-  billing: Record<Provider, { mode: BillingMode; monthly: number | null; planId?: string | null }>;
+  billing: Record<Provider, Billing>;
+  monthlyBilling?: Record<string, Partial<Record<Provider, Billing>>>;
+  periodBilling?: Record<string, Partial<Record<Provider, Billing>>>;
 }
 export const defaultSettings = (): Settings => ({
   onboarded: false,

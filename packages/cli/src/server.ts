@@ -9,6 +9,8 @@ import { demoData } from '../../core/src/demo.ts';
 import {
   defaultSettings,
   type BillingMode,
+  type Billing,
+  type Provider,
   type Settings,
   type UsageRecord,
 } from '../../core/src/types.ts';
@@ -17,6 +19,7 @@ import type { BootstrapResponse } from './protocol.ts';
 import { isRecord } from '../../core/src/metadata.ts';
 import { safeDirectory } from '../../core/src/security.ts';
 import { subscriptionPlan } from '../../core/src/subscriptions.ts';
+import { shiftCalendarDays } from '../../core/src/calendar.ts';
 const mime: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -29,6 +32,34 @@ const billingModes = ['UNKNOWN', 'SUBSCRIPTION', 'NO_SUBSCRIPTION', 'API', 'MIXE
 const isBillingMode = (value: unknown): value is BillingMode =>
   billingModes.some((mode) => mode === value);
 
+function validateBilling(provider: Provider, value: unknown, monthly = false): Billing {
+  if (!isRecord(value) || !isBillingMode(value.mode)) throw new Error('Invalid billing settings');
+  const amount = (n: unknown) =>
+    n === null || (typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1000000);
+  if (!amount(value.monthly)) throw new Error('Invalid subscription amount');
+  if (value.apiSpend !== undefined && !amount(value.apiSpend)) throw new Error('Invalid API spend');
+  if (!monthly && value.apiSpend != null) throw new Error('API spend belongs to a specific month');
+  const planId = value.planId;
+  if (planId != null && typeof planId !== 'string') throw new Error('Invalid subscription plan');
+  const plan = planId == null ? undefined : subscriptionPlan(provider, planId);
+  if (planId != null && !plan) throw new Error('Invalid subscription plan');
+  const subscribed = value.mode === 'SUBSCRIPTION' || value.mode === 'MIXED';
+  if (
+    subscribed &&
+    plan &&
+    (value.monthly === null || Math.abs(Number(value.monthly) - plan.monthly) > 0.005)
+  )
+    throw new Error('Subscription amount does not match the selected plan');
+  return {
+    mode: value.mode,
+    monthly: subscribed ? (plan?.monthly ?? (value.monthly as number | null)) : null,
+    ...(subscribed && planId !== undefined ? { planId: plan?.id ?? null } : {}),
+    ...(monthly &&
+    (value.mode === 'API' || value.mode === 'MIXED' || value.mode === 'NO_SUBSCRIPTION')
+      ? { apiSpend: (value.apiSpend as number | null | undefined) ?? null }
+      : {}),
+  };
+}
 export function validateSettings(value: unknown): Settings {
   if (!isRecord(value) || value.currency !== 'USD' || typeof value.onboarded !== 'boolean')
     throw new Error('Invalid settings');
@@ -42,33 +73,49 @@ export function validateSettings(value: unknown): Settings {
     settings.receiptTheme = value.receiptTheme;
   }
   for (const provider of ['codex', 'claude'] as const) {
-    const billing = value.billing[provider];
-    const included = value.include[provider];
-    if (!isRecord(billing) || !isBillingMode(billing.mode) || typeof included !== 'boolean')
-      throw new Error('Invalid billing settings');
-    const monthly = billing.monthly;
-    if (
-      monthly !== null &&
-      (typeof monthly !== 'number' || !Number.isFinite(monthly) || monthly < 0 || monthly > 1000000)
-    )
-      throw new Error('Invalid subscription amount');
-    const planId = billing.planId;
-    if (planId != null && typeof planId !== 'string') throw new Error('Invalid subscription plan');
-    const plan = planId == null ? undefined : subscriptionPlan(provider, planId);
-    if (planId != null && !plan) throw new Error('Invalid subscription plan');
-    if (
-      billing.mode === 'SUBSCRIPTION' &&
-      plan &&
-      (monthly === null || Math.abs(monthly - plan.monthly) > 0.005)
-    )
-      throw new Error('Subscription amount does not match the selected plan');
-    settings.billing[provider] = {
-      mode: billing.mode,
-      monthly: billing.mode === 'SUBSCRIPTION' ? (plan?.monthly ?? monthly) : null,
-    };
-    if (billing.mode === 'SUBSCRIPTION' && planId !== undefined)
-      settings.billing[provider].planId = plan?.id ?? null;
-    settings.include[provider] = included;
+    if (typeof value.include[provider] !== 'boolean') throw new Error('Invalid billing settings');
+    settings.billing[provider] = validateBilling(provider, value.billing[provider]);
+    settings.include[provider] = value.include[provider];
+  }
+  if (value.monthlyBilling !== undefined) {
+    if (!isRecord(value.monthlyBilling) || Object.keys(value.monthlyBilling).length > 240)
+      throw new Error('Invalid monthly billing');
+    settings.monthlyBilling = {};
+    for (const [month, providers] of Object.entries(value.monthlyBilling)) {
+      if (
+        !/^(?:19|20|21)\d{2}-(?:0[1-9]|1[0-2])$/.test(month) ||
+        !isRecord(providers) ||
+        Object.keys(providers).some((provider) => provider !== 'codex' && provider !== 'claude')
+      )
+        throw new Error('Invalid monthly billing');
+      const entry: Partial<Record<Provider, Billing>> = {};
+      for (const provider of ['codex', 'claude'] as const)
+        if (providers[provider] !== undefined)
+          entry[provider] = validateBilling(provider, providers[provider], true);
+      settings.monthlyBilling[month] = entry;
+    }
+  }
+  if (value.periodBilling !== undefined) {
+    if (!isRecord(value.periodBilling) || Object.keys(value.periodBilling).length > 240)
+      throw new Error('Invalid period billing');
+    settings.periodBilling = {};
+    for (const [key, providers] of Object.entries(value.periodBilling)) {
+      const [from, to] = key.split(':');
+      if (
+        !/^\d{4}-\d{2}-\d{2}:\d{4}-\d{2}-\d{2}$/.test(key) ||
+        shiftCalendarDays(from, 0) === null ||
+        shiftCalendarDays(to, 0) === null ||
+        from > to ||
+        !isRecord(providers) ||
+        Object.keys(providers).some((p) => p !== 'codex' && p !== 'claude')
+      )
+        throw new Error('Invalid period billing');
+      const entry: Partial<Record<Provider, Billing>> = {};
+      for (const provider of ['codex', 'claude'] as const)
+        if (providers[provider] !== undefined)
+          entry[provider] = validateBilling(provider, providers[provider], true);
+      settings.periodBilling[key] = entry;
+    }
   }
   return settings;
 }

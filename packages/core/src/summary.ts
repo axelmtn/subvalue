@@ -1,3 +1,4 @@
+import { billingForRange } from './billing.ts';
 import type { Provider, Settings, SourceStatus, UsageRecord } from './types.ts';
 import { priceRecord, catalog, type Catalog } from './pricing/index.ts';
 import { fullCalendarMonths, shiftCalendarDays } from './calendar.ts';
@@ -88,6 +89,8 @@ export function dateRange(
   return { ...range, calendarMonths: fullCalendarMonths(range) };
 }
 export interface Comparison {
+  apiSpend?: number | null;
+  paid?: number | null;
   subscription: number | null;
   value: number | null;
   roi: number | null;
@@ -118,6 +121,7 @@ export interface ProviderSummary {
   comparison: Comparison;
   mode: string;
   monthly: number | null;
+  needsBilling?: boolean;
   first: string | null;
   last: string | null;
   days: number;
@@ -199,52 +203,46 @@ export function summarize(
     const historyPartial = !demo; // Local transcripts cannot prove that all historical requests were retained.
     const completePricing = rows.length > 0 && priced.length === rows.length;
     const apiEquivalent = completePricing ? subtotal : null;
-    const billing = settings.billing[provider];
-    const subscription =
-      billing.mode === 'SUBSCRIPTION' && billing.monthly !== null
-        ? subscriptionForRange(billing.monthly, range)
-        : null;
-    let comparison = neutral(
-      billing.mode === 'NO_SUBSCRIPTION'
-        ? 'No subscription'
-        : billing.mode === 'API'
-          ? 'API usage'
-          : billing.mode === 'MIXED'
-            ? 'Mixed billing'
-            : billing.mode === 'UNKNOWN'
-              ? 'Billing not set'
-              : fullCalendarMonths(range) === null
-                ? 'Choose a full month'
-                : subscription === null
-                  ? 'Subscription price not set'
-                  : !completePricing
-                    ? 'Pricing unavailable'
-                    : 'Partial history',
-      subscription,
-    );
-    if (completePricing && subscription !== null) {
-      const value = apiEquivalent! - subscription;
+    const billing = billingForRange(settings, provider, range);
+    const { subscription, apiSpend, paid } = billing;
+    let comparison: Comparison = {
+      ...neutral(
+        fullCalendarMonths(range) === null
+          ? 'Choose a full month'
+          : paid === null
+            ? 'Expenses not set'
+            : 'Partial history',
+        subscription,
+      ),
+      apiSpend,
+      paid,
+    };
+    if (completePricing && paid !== null) {
+      const value = apiEquivalent! - paid;
       let accumulated = 0;
       let breakEven: string | null = null;
       for (const d of daily) {
         accumulated += d[provider] ?? 0;
-        if (accumulated >= subscription) {
+        if (accumulated >= paid) {
           breakEven = d.date;
           break;
         }
       }
       comparison = {
         subscription,
+        apiSpend,
+        paid,
         value,
-        roi: subscription > 0 ? apiEquivalent! / subscription : null,
+        roi: paid > 0 ? apiEquivalent! / paid : null,
         breakEven: historyPartial ? null : breakEven,
-        outcome: historyPartial
-          ? 'neutral'
-          : value > 0
-            ? 'positive'
-            : value < 0
-              ? 'negative'
-              : 'neutral',
+        outcome:
+          historyPartial || subscription === 0
+            ? 'neutral'
+            : value > 0
+              ? 'positive'
+              : value < 0
+                ? 'negative'
+                : 'neutral',
         reason: historyPartial ? 'Observed usage · Partial history' : null,
       };
     }
@@ -299,6 +297,7 @@ export function summarize(
       comparison,
       mode: billing.mode,
       monthly: billing.monthly,
+      needsBilling: billing.needsBilling,
       first: timestamps[0] ?? null,
       last: timestamps.at(-1) ?? null,
       days: new Set(timestamps.map((t) => t.slice(0, 10))).size,
@@ -311,43 +310,43 @@ export function summarize(
   const known = active.filter((p) => p.knownSubtotal !== null);
   const knownSubtotal = known.length ? known.reduce((n, p) => n + p.knownSubtotal!, 0) : null;
   const apiEquivalent = count > 0 && pricedRecords === count ? knownSubtotal : null;
-  const subs = active.filter((p) => p.mode === 'SUBSCRIPTION');
-  let comparison = neutral(
-    active.some((p) => p.mode !== 'SUBSCRIPTION')
-      ? 'Subscription comparison unavailable'
-      : 'Partial history',
-  );
-  if (
-    subs.length &&
-    subs.length === active.length &&
-    subs.every((p) => p.comparison.value !== null)
-  ) {
-    const subscription = subs.reduce((n, p) => n + p.comparison.subscription!, 0);
-    const value = apiEquivalent! - subscription;
-    let accumulated = 0,
-      breakEven: string | null = null;
-    if (demo)
-      for (const d of daily) {
-        accumulated += (d.codex ?? 0) + (d.claude ?? 0);
-        if (accumulated >= subscription) {
-          breakEven = d.date;
-          break;
+  let comparison: Comparison = neutral('Expenses not set');
+  if (active.length && active.every((p) => p.comparison.paid != null)) {
+    const subscription = active.reduce((n, p) => n + p.comparison.subscription!, 0),
+      apiSpend = active.reduce((n, p) => n + p.comparison.apiSpend!, 0),
+      paid = subscription + apiSpend;
+    comparison = { ...neutral('Partial history', subscription), apiSpend, paid };
+    if (apiEquivalent !== null) {
+      const value = apiEquivalent - paid;
+      let accumulated = 0,
+        breakEven: string | null = null;
+      if (demo)
+        for (const d of daily) {
+          accumulated += (d.codex ?? 0) + (d.claude ?? 0);
+          if (accumulated >= paid) {
+            breakEven = d.date;
+            break;
+          }
         }
-      }
-    comparison = {
-      subscription,
-      value,
-      roi: subscription > 0 ? apiEquivalent! / subscription : null,
-      breakEven,
-      outcome: demo ? (value > 0 ? 'positive' : value < 0 ? 'negative' : 'neutral') : 'neutral',
-      reason: demo ? null : 'Observed usage · Partial history',
-    };
-  } else if (
-    subs.length &&
-    subs.length === active.length &&
-    subs.every((p) => p.comparison.subscription !== null)
-  )
-    comparison.subscription = subs.reduce((n, p) => n + p.comparison.subscription!, 0);
+      comparison = {
+        subscription,
+        apiSpend,
+        paid,
+        value,
+        roi: paid > 0 ? apiEquivalent / paid : null,
+        breakEven,
+        outcome:
+          demo && subscription > 0
+            ? value > 0
+              ? 'positive'
+              : value < 0
+                ? 'negative'
+                : 'neutral'
+            : 'neutral',
+        reason: demo ? null : 'Observed usage · Partial history',
+      };
+    }
+  }
   const confidence = active.length
     ? ['INCOMPLETE', 'LOW', 'MEDIUM', 'HIGH'].find((q) => active.some((p) => p.confidence === q))!
     : 'NO DATA';
