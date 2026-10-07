@@ -20,7 +20,7 @@ The first command checks detection without reading session contents. The second 
 ## Check the app
 
 1. Confirm the detected providers. A detected provider may have no usage in the selected period.
-2. Enter your billing mode and subscription amount when needed. They are declarations, never inferred from credentials.
+2. Choose your subscription plan or **No subscription** for each provider. A custom amount is also available. These are declarations, never inferred from credentials.
 3. Check Overview, 7D/30D/Month, Receipt and Settings. Pricing coverage describes imported usage, not every request ever made.
 4. Export PNG. Check readable amounts and the absence of project names, paths, prompts and session IDs.
 5. Use **Refresh usage** at the top of Overview after new activity. It updates local metadata without restarting the app. Period controls only filter cached data.
