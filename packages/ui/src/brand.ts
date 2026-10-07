@@ -2,6 +2,7 @@
 export const product = {
   name: 'SubValue',
   site: 'subvalue.dev',
+  repository: 'https://github.com/axelmtn/subvalue',
   exportBasename: 'subvalue-receipt',
 };
 // Typography remains separate from the neutral symbol and follows the display name.

@@ -216,7 +216,12 @@ export function drawReceipt(
   canvas: HTMLCanvasElement,
   model: ReceiptModel,
   theme: 'dark' | 'light' = 'dark',
+  presentation: 'standard' | 'preview' = 'standard',
 ): void {
+  // A public example needs larger print when viewed inside the dashboard preview.
+  // The paper, layout and export renderer remain shared with the local application.
+  const printSize = (size: number) =>
+    presentation === 'preview' ? Math.max(13, size * 1.12) : size;
   const light = theme === 'light';
   const ink = (color: string) =>
     light
@@ -288,6 +293,7 @@ export function drawReceipt(
     bold = false,
     maxWidth = width - 48,
   ) => {
+    size = printSize(size);
     c.font = `${bold ? '600 ' : ''}${size}px ${mono}`;
     while (c.measureText(value).width > maxWidth && size > 8) {
       size -= 0.5;
@@ -335,7 +341,7 @@ export function drawReceipt(
             ? '#e1e2e4'
             : '#bdc0c6';
     const valueSize = multiple ? 25 : row.accent ? 22 : row.strong ? 18 : 16;
-    c.font = `${valueSize}px ${mono}`;
+    c.font = `${printSize(valueSize)}px ${mono}`;
     const valueWidth = c.measureText(row.right).width;
     text(
       label,

@@ -60,8 +60,13 @@ const example: ReceiptInput = {
   demo: true,
 };
 document.querySelector('#landing')!.innerHTML = /* HTML */ `<header class="landing-nav">
-    <a class="brand" href="#"><span class="brand-mark">${productMark}</span>${productNameMarkup}</a
-    ><a class="github-link" href="#release">Install <span>↓</span></a>
+    <a class="brand" href="#"><span class="brand-mark">${productMark}</span>${productNameMarkup}</a>
+    <nav class="landing-links" aria-label="Site navigation">
+      <a class="install-link" href="#release">Install <span>↓</span></a>
+      <a class="github-link" href="${product.repository}" target="_blank" rel="noreferrer"
+        >GitHub <span>↗</span></a
+      >
+    </nav>
   </header>
   <main>
     <section class="hero">
@@ -81,7 +86,9 @@ document.querySelector('#landing')!.innerHTML = /* HTML */ `<header class="landi
         </button>
       </div>
       <div class="trust-row">
-        <span>✓ Local</span><span>✓ Read-only</span><span>✓ No telemetry</span>
+        <span>✓ Local</span><span>✓ Read-only</span>
+        <a href="${product.repository}" target="_blank" rel="noreferrer">✓ Open source</a>
+        <span>✓ No telemetry</span>
       </div>
       <span class="release-note">Node.js 24.13+ · Windows · macOS · Linux</span>
     </section>
@@ -182,6 +189,8 @@ await receiptFonts();
 drawReceipt(
   document.querySelector<HTMLCanvasElement>('#example-receipt')!,
   receiptModel(example, new Date(2026, 10, 1, 9, 30)),
+  'dark',
+  'preview',
 );
 document.querySelectorAll<HTMLButtonElement>('.copy-command').forEach((b) =>
   b.addEventListener('click', async () => {

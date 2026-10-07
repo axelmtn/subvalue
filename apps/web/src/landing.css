@@ -22,13 +22,27 @@
   justify-content: space-between;
   align-items: center;
 }
-.github-link {
-  font-size: 12px;
+.landing-links {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+.github-link,
+.install-link {
+  font-size: 13px;
   color: var(--muted);
   display: flex;
+  align-items: center;
+  min-height: 44px;
   gap: 8px;
 }
-.github-link span {
+.github-link span,
+.install-link span {
+  color: var(--green);
+}
+.github-link:hover,
+.install-link:hover,
+.trust-row a:hover {
   color: var(--green);
 }
 .hero {
@@ -101,13 +115,16 @@
 }
 .trust-row {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 25px;
+  row-gap: 12px;
   margin-top: 22px;
   color: #a3b0a6;
   font-size: 10px;
 }
-.trust-row span {
+.trust-row span,
+.trust-row a {
   white-space: nowrap;
 }
 .release-note {
@@ -123,7 +140,7 @@
 .preview-label {
   display: flex;
   justify-content: space-between;
-  font: 8px var(--mono);
+  font: 11px var(--mono);
   letter-spacing: 1.2px;
   color: var(--muted);
   margin-bottom: 12px;
@@ -141,7 +158,7 @@
   gap: 29px;
   padding: 20px 24px;
   border-bottom: 1px solid var(--border);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
 }
 .preview-topbar .brand {
@@ -166,7 +183,7 @@
 }
 .preview-date {
   margin-left: auto;
-  font: 8px var(--mono);
+  font: 11px var(--mono);
 }
 .preview-body {
   display: grid;
@@ -198,7 +215,7 @@
   padding-top: 15px;
 }
 .preview-metrics span {
-  font-size: 8px;
+  font-size: 12px;
   color: var(--muted);
 }
 .preview-metrics strong {
@@ -233,7 +250,7 @@
   font-weight: 500;
 }
 .preview-provider > div span {
-  font-size: 9px;
+  font-size: 12px;
   color: var(--muted);
 }
 .preview-provider b {
@@ -243,7 +260,7 @@
   letter-spacing: -0.5px;
 }
 .preview-active {
-  font: 8px var(--mono);
+  font: 11px var(--mono);
   background: #153020;
   border: 1px solid #284f35;
   color: var(--green);
@@ -260,16 +277,16 @@
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  font-size: 9px;
+  font-size: 12px;
   margin-bottom: 19px;
 }
 .preview-chart strong {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 450;
 }
 .preview-chart > div:first-child span {
   color: var(--green);
-  font-size: 8px;
+  font-size: 11px;
 }
 .preview-bars {
   height: 143px;
@@ -295,7 +312,7 @@
 .preview-chart-axis {
   display: flex;
   justify-content: space-between;
-  font: 8px var(--mono);
+  font: 11px var(--mono);
   color: var(--muted);
   margin-top: 12px;
 }
@@ -312,6 +329,9 @@
   display: flex;
   flex-direction: column;
   justify-content: start;
+  min-width: 0;
+  width: 100%;
+  max-width: 368px;
   gap: 13px;
 }
 .preview-receipt canvas {
@@ -429,7 +449,7 @@
     padding: 14px 10px;
   }
   .preview-metrics span {
-    font-size: 7px;
+    font-size: 12px;
   }
 }
 @media (max-width: 760px) {
@@ -475,13 +495,13 @@
     margin-top: 13px;
   }
   .preview-label {
-    font-size: 6px;
+    font-size: 11px;
     letter-spacing: 0.8px;
   }
   .preview-topbar {
     padding: 18px;
     gap: 19px;
-    font-size: 8px;
+    font-size: 12px;
   }
   .preview-topbar .brand {
     font-size: 14px;
@@ -491,7 +511,7 @@
     display: none;
   }
   .preview-date {
-    font-size: 8px;
+    font-size: 11px;
   }
   .preview-body {
     grid-template-columns: 1fr;
@@ -510,7 +530,7 @@
     font-size: 25px;
   }
   .preview-metrics span {
-    font-size: 9px;
+    font-size: 12px;
   }
   .preview-provider {
     padding: 17px;
@@ -605,7 +625,7 @@
   color: #a8b7af;
 }
 .product-preview {
-  max-width: 1180px;
+  max-width: 1240px;
 }
 .preview-window {
   background: #0b0d10;
@@ -641,7 +661,7 @@
   letter-spacing: -0.9px;
 }
 .preview-metrics span {
-  font-size: 9px;
+  font-size: 12px;
   color: #b7c0c7;
 }
 .preview-provider,
@@ -747,13 +767,13 @@
     padding-top: 16px;
   }
   .preview-metrics span {
-    font-size: 10px;
+    font-size: 12px;
   }
   .preview-metrics strong {
     font-size: 27px;
   }
   .preview-receipt {
-    max-width: 335px;
+    max-width: 368px;
   }
   .preview-bars {
     height: 138px;
@@ -775,7 +795,7 @@
     padding-bottom: 36px;
   }
   .preview-label {
-    font-size: 7px;
+    font-size: 11px;
   }
   .copy-command {
     min-height: 40px;
@@ -800,7 +820,7 @@
   object-fit: contain;
 }
 .preview-body {
-  grid-template-columns: minmax(0, 1fr) 285px;
+  grid-template-columns: minmax(0, 1fr) 368px;
 }
 .preview-receipt canvas {
   filter: drop-shadow(0 2px 2px #0007) drop-shadow(0 10px 14px #0006);
@@ -815,9 +835,17 @@
 .preview-bars i {
   background: linear-gradient(to bottom, #37ec85, #278451);
 }
+@media (max-width: 1100px) {
+  .preview-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 @media (max-width: 1000px) {
   .preview-body {
-    grid-template-columns: minmax(0, 1fr) 245px;
+    grid-template-columns: 1fr;
+  }
+  .preview-receipt {
+    margin-inline: auto;
   }
 }
 @media (max-width: 760px) {
@@ -825,7 +853,7 @@
     grid-template-columns: 1fr;
   }
   .preview-receipt {
-    max-width: 335px;
+    max-width: 368px;
   }
   .preview-topbar .brand-mark {
     width: 20px;
