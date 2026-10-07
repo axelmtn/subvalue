@@ -1,18 +1,130 @@
-import test from 'node:test';import assert from 'node:assert/strict';
-import {parseCodex,codexState} from '../packages/core/src/providers/codex/index.ts';import {meta,context,codexEvent,counts} from './helpers.ts';
-function setup(extra={}){const s=codexState();parseCodex(meta(extra),s,'ref',1);parseCodex(context(),s,'ref',2);return s;}
-test('Codex sums deltas, never cumulative snapshots',()=>{const s=setup();const a=parseCodex(codexEvent(counts()),s,'ref',3)!;const b=parseCodex(codexEvent(counts(180,40,30,8),counts(80,20,20,4),3),s,'ref',4)!;assert.equal(a.input_tokens!+b.input_tokens!,180);assert.equal(a.output_tokens!+b.output_tokens!,30);assert.equal(b.source_schema,'codex.token_count.v1/cumulative-delta');});
-test('repeated cumulative values produce no usage record',()=>{const s=setup();parseCodex(codexEvent(counts()),s,'ref',3);assert.equal(parseCodex(codexEvent(counts(),counts(),4),s,'ref',4),null);assert.equal(s.diagnostics.repeated,1);});
-test('reset starts a new segment and counts only new usage',()=>{const s=setup();parseCodex(codexEvent(counts(1000)),s,'ref',3);const r=parseCodex(codexEvent(counts(30,10,5,2),counts(30,10,5,2),3),s,'ref',4)!;assert.equal(r.input_tokens,30);assert.equal(r.output_tokens,5);assert.equal(s.diagnostics.resets,1);assert.equal(r.quality,'MEDIUM');});
-test('inherited subagent prefix is excluded by ordinal',()=>{const s=setup({subagent_history_start_ordinal:10,parent_thread_id:'parent-a'});assert.equal(parseCodex(codexEvent(counts(999),undefined,3),s,'ref',3),null);const own=parseCodex(codexEvent(counts(50,10,5),undefined,10),s,'ref',4)!;assert.equal(own.input_tokens,50);assert.equal(s.diagnostics.inherited,1);});
-test('missing ordinal with inheritance boundary is not guessed',()=>{const s=setup({subagent_history_start_ordinal:10});const o:any=codexEvent(counts());delete o.ordinal;assert.equal(parseCodex(o,s,'ref',3),null);assert.equal(s.diagnostics.unsupported,1);});
-test('incomplete totals are retained, never represented as zero',()=>{const s=setup();const r=parseCodex(codexEvent(counts(0,0,0,0,1200)),s,'ref',3)!;assert.equal(r.input_tokens,null);assert.equal(r.output_tokens,null);assert.equal(r.unallocated_total_tokens,1200);assert.equal(r.total_tokens,1200);assert.equal(r.quality,'INCOMPLETE');});
-test('model changes apply to subsequent usage',()=>{const s=setup();assert.equal(parseCodex(codexEvent(counts()),s,'ref',3)!.model_raw,'known');parseCodex(context('next-model'),s,'ref',4);assert.equal(parseCodex(codexEvent(counts(200,40,20,8),counts(),4),s,'ref',5)!.model_raw,'next-model');});
-test('older schema with last usage and missing cache-write remains partial',()=>{const s=setup();const last:any=counts();delete last.cache_write_input_tokens;const o:any=codexEvent(null,last);const r=parseCodex(o,s,'ref',3)!;assert.equal(r.cache_creation_tokens,null);assert.equal(r.quality,'INCOMPLETE');});
-test('cumulative-only schema preserves uncertain initial allocation then computes deltas',()=>{const s=setup();const a=codexEvent(counts(),null);const r=parseCodex(a,s,'ref',3)!;assert.equal(r.input_tokens,100);assert.equal(r.quality,'INCOMPLETE');const b=parseCodex(codexEvent(counts(150,30,20,8),null,3),s,'ref',4)!;assert.equal(b.input_tokens,50);});
-test('starting mid-session uses last usage without inventing older requests',()=>{const s=setup();const r=parseCodex(codexEvent(counts(1000,200,500,50),counts()),s,'ref',3)!;assert.equal(r.input_tokens,100);assert.ok(r.notes.includes('nonzero-starting-baseline'));});
-test('invalid cached-input subset is incomplete',()=>{const s=setup();assert.equal(parseCodex(codexEvent(counts(10,100)),s,'ref',3)!.quality,'INCOMPLETE');});
-test('metadata projection never retains raw cwd, instruction, or content',()=>{const s=setup();const raw=meta({base_instructions:'DO_NOT_STORE_PRIVATE_SENTINEL'});parseCodex(raw,s,'ref',1);const r=parseCodex(codexEvent(counts()),s,'ref',3)!;const serialized=JSON.stringify({s,r});assert.ok(!serialized.includes('private-fixture'));assert.ok(!serialized.includes('DO_NOT_STORE'));assert.equal(r.billing_mode,'UNKNOWN');});
-test('inherited parent metadata cannot overwrite child identity',()=>{const s=setup({id:'child',subagent_history_start_ordinal:10,model:'child-model'});const parent=meta({id:'parent',model:'parent-model'});parent.ordinal=2;parseCodex(parent,s,'ref',3);parseCodex(context('parent-model'),s,'ref',4);const own=parseCodex(codexEvent(counts(),undefined,10),s,'ref',5)!;assert.equal(own.thread_id,'child');assert.equal(own.model_raw,'child-model');});
-test('new thread header resets the cumulative baseline',()=>{const s=setup();parseCodex(codexEvent(counts(1000)),s,'ref',3);parseCodex(meta({id:'thread-b'}),s,'ref',4);parseCodex(context(),s,'ref',5);const r=parseCodex(codexEvent(counts(10),undefined,3),s,'ref',6)!;assert.equal(r.input_tokens,10);assert.equal(r.thread_id,'thread-b');assert.equal(s.diagnostics.resets,0);});
-test('reset without a last request keeps an incomplete cumulative allocation',()=>{const s=setup();parseCodex(codexEvent(counts(1000)),s,'ref',3);const r=parseCodex(codexEvent(counts(10),null,4),s,'ref',4)!;assert.equal(r.quality,'INCOMPLETE');assert.ok(r.notes.includes('reset-without-last'));});
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { parseCodex, codexState } from '../packages/core/src/providers/codex/index.ts';
+import { meta, context, codexEvent, counts } from './helpers.ts';
+function setup(extra = {}) {
+  const s = codexState();
+  parseCodex(meta(extra), s, 'ref', 1);
+  parseCodex(context(), s, 'ref', 2);
+  return s;
+}
+test('Codex sums deltas, never cumulative snapshots', () => {
+  const s = setup();
+  const a = parseCodex(codexEvent(counts()), s, 'ref', 3)!;
+  const b = parseCodex(codexEvent(counts(180, 40, 30, 8), counts(80, 20, 20, 4), 3), s, 'ref', 4)!;
+  assert.equal(a.input_tokens! + b.input_tokens!, 180);
+  assert.equal(a.output_tokens! + b.output_tokens!, 30);
+  assert.equal(b.source_schema, 'codex.token_count.v1/cumulative-delta');
+});
+test('repeated cumulative values produce no usage record', () => {
+  const s = setup();
+  parseCodex(codexEvent(counts()), s, 'ref', 3);
+  assert.equal(parseCodex(codexEvent(counts(), counts(), 4), s, 'ref', 4), null);
+  assert.equal(s.diagnostics.repeated, 1);
+});
+test('reset starts a new segment and counts only new usage', () => {
+  const s = setup();
+  parseCodex(codexEvent(counts(1000)), s, 'ref', 3);
+  const r = parseCodex(codexEvent(counts(30, 10, 5, 2), counts(30, 10, 5, 2), 3), s, 'ref', 4)!;
+  assert.equal(r.input_tokens, 30);
+  assert.equal(r.output_tokens, 5);
+  assert.equal(s.diagnostics.resets, 1);
+  assert.equal(r.quality, 'MEDIUM');
+});
+test('inherited subagent prefix is excluded by ordinal', () => {
+  const s = setup({ subagent_history_start_ordinal: 10, parent_thread_id: 'parent-a' });
+  assert.equal(parseCodex(codexEvent(counts(999), undefined, 3), s, 'ref', 3), null);
+  const own = parseCodex(codexEvent(counts(50, 10, 5), undefined, 10), s, 'ref', 4)!;
+  assert.equal(own.input_tokens, 50);
+  assert.equal(s.diagnostics.inherited, 1);
+});
+test('missing ordinal with inheritance boundary is not guessed', () => {
+  const s = setup({ subagent_history_start_ordinal: 10 });
+  const o: any = codexEvent(counts());
+  delete o.ordinal;
+  assert.equal(parseCodex(o, s, 'ref', 3), null);
+  assert.equal(s.diagnostics.unsupported, 1);
+});
+test('incomplete totals are retained, never represented as zero', () => {
+  const s = setup();
+  const r = parseCodex(codexEvent(counts(0, 0, 0, 0, 1200)), s, 'ref', 3)!;
+  assert.equal(r.input_tokens, null);
+  assert.equal(r.output_tokens, null);
+  assert.equal(r.unallocated_total_tokens, 1200);
+  assert.equal(r.total_tokens, 1200);
+  assert.equal(r.quality, 'INCOMPLETE');
+});
+test('model changes apply to subsequent usage', () => {
+  const s = setup();
+  assert.equal(parseCodex(codexEvent(counts()), s, 'ref', 3)!.model_raw, 'known');
+  parseCodex(context('next-model'), s, 'ref', 4);
+  assert.equal(
+    parseCodex(codexEvent(counts(200, 40, 20, 8), counts(), 4), s, 'ref', 5)!.model_raw,
+    'next-model',
+  );
+});
+test('older schema with last usage and missing cache-write remains partial', () => {
+  const s = setup();
+  const last: any = counts();
+  delete last.cache_write_input_tokens;
+  const o: any = codexEvent(null, last);
+  const r = parseCodex(o, s, 'ref', 3)!;
+  assert.equal(r.cache_creation_tokens, null);
+  assert.equal(r.quality, 'INCOMPLETE');
+});
+test('cumulative-only schema preserves uncertain initial allocation then computes deltas', () => {
+  const s = setup();
+  const a = codexEvent(counts(), null);
+  const r = parseCodex(a, s, 'ref', 3)!;
+  assert.equal(r.input_tokens, 100);
+  assert.equal(r.quality, 'INCOMPLETE');
+  const b = parseCodex(codexEvent(counts(150, 30, 20, 8), null, 3), s, 'ref', 4)!;
+  assert.equal(b.input_tokens, 50);
+});
+test('starting mid-session uses last usage without inventing older requests', () => {
+  const s = setup();
+  const r = parseCodex(codexEvent(counts(1000, 200, 500, 50), counts()), s, 'ref', 3)!;
+  assert.equal(r.input_tokens, 100);
+  assert.ok(r.notes.includes('nonzero-starting-baseline'));
+});
+test('invalid cached-input subset is incomplete', () => {
+  const s = setup();
+  assert.equal(parseCodex(codexEvent(counts(10, 100)), s, 'ref', 3)!.quality, 'INCOMPLETE');
+});
+test('metadata projection never retains raw cwd, instruction, or content', () => {
+  const s = setup();
+  const raw = meta({ base_instructions: 'DO_NOT_STORE_PRIVATE_SENTINEL' });
+  parseCodex(raw, s, 'ref', 1);
+  const r = parseCodex(codexEvent(counts()), s, 'ref', 3)!;
+  const serialized = JSON.stringify({ s, r });
+  assert.ok(!serialized.includes('private-fixture'));
+  assert.ok(!serialized.includes('DO_NOT_STORE'));
+  assert.equal(r.billing_mode, 'UNKNOWN');
+});
+test('inherited parent metadata cannot overwrite child identity', () => {
+  const s = setup({ id: 'child', subagent_history_start_ordinal: 10, model: 'child-model' });
+  const parent = meta({ id: 'parent', model: 'parent-model' });
+  parent.ordinal = 2;
+  parseCodex(parent, s, 'ref', 3);
+  parseCodex(context('parent-model'), s, 'ref', 4);
+  const own = parseCodex(codexEvent(counts(), undefined, 10), s, 'ref', 5)!;
+  assert.equal(own.thread_id, 'child');
+  assert.equal(own.model_raw, 'child-model');
+});
+test('new thread header resets the cumulative baseline', () => {
+  const s = setup();
+  parseCodex(codexEvent(counts(1000)), s, 'ref', 3);
+  parseCodex(meta({ id: 'thread-b' }), s, 'ref', 4);
+  parseCodex(context(), s, 'ref', 5);
+  const r = parseCodex(codexEvent(counts(10), undefined, 3), s, 'ref', 6)!;
+  assert.equal(r.input_tokens, 10);
+  assert.equal(r.thread_id, 'thread-b');
+  assert.equal(s.diagnostics.resets, 0);
+});
+test('reset without a last request keeps an incomplete cumulative allocation', () => {
+  const s = setup();
+  parseCodex(codexEvent(counts(1000)), s, 'ref', 3);
+  const r = parseCodex(codexEvent(counts(10), null, 4), s, 'ref', 4)!;
+  assert.equal(r.quality, 'INCOMPLETE');
+  assert.ok(r.notes.includes('reset-without-last'));
+});

@@ -2,21 +2,21 @@
 
 USD per million tokens, standard first-party API equivalent. Exact public model IDs only. A mapping's HIGH confidence describes identity, not completeness of retained history. This catalog is bundled and makes no network requests.
 
-| Model | Effective date | Input / cached input / output | Evidence |
-|---|---|---|---|
-| GPT-5.6 Sol | 2026-07-09 | 5 / 0.50 / 30 | [Launch](https://openai.com/index/gpt-5-6/) |
-| GPT-5.6 Sol | 2026-08-21 | 4 / 0.40 / 20 | [API changelog, Aug 21](https://developers.openai.com/api/docs/changelog), [model](https://developers.openai.com/api/docs/models/gpt-5.6-sol) |
-| GPT-5.6 Luna | 2026-07-09 | 1 / 0.10 / 6 | [Launch](https://openai.com/index/gpt-5-6/) |
-| GPT-5.6 Luna | 2026-07-30 | 0.20 / 0.02 / 1.20 | [Price change](https://openai.com/index/advancing-the-price-performance-frontier-with-gpt-5-6/), [model](https://developers.openai.com/api/docs/models/gpt-5.6-luna) |
-| GPT-6 Astra | 2026-09-03 | 10 / 1 / 50 | [API changelog](https://developers.openai.com/api/docs/changelog), [model](https://developers.openai.com/api/docs/models/gpt-6-astra) |
-| GPT-6 Sol | 2026-09-22 | 2 / 0.20 / 10 | [API changelog, Sep 22](https://developers.openai.com/api/docs/changelog), [model](https://developers.openai.com/api/docs/models/gpt-6-sol) |
-| GPT-6 Luna | 2026-09-22 | 0.10 / 0.01 / 0.50 | [API changelog, Sep 22](https://developers.openai.com/api/docs/changelog) |
-| GPT-6.1 Sol | 2026-09-29 | 2 / 0.10 / 10 | [API changelog, Sep 29](https://developers.openai.com/api/docs/changelog), [model](https://developers.openai.com/api/docs/models/gpt-6.1-sol) |
-| Claude Fable 5 | 2026-06-09; restored 2026-07-01 | 10 / 1 / 50 | [Announcement, including suspension](https://www.anthropic.com/news/claude-fable-5-mythos-5), [release notes](https://platform.claude.com/docs/en/release-notes/overview) |
-| Claude Opus 4.8 | 2026-05-28 | 5 / 0.50 / 25 | [Announcement](https://www.anthropic.com/news/claude-opus-4-8) |
-| Claude Opus 5 | 2026-07-24 | 5 / 0.50 / 25 | [Announcement](https://www.anthropic.com/news/claude-opus-5) |
-| Claude Opus 4.7 / 4.6 / 4.5 | 2026-04-16 / 2026-02-05 / 2025-11-24 | 5 / 0.50 / 25 | [4.7](https://www.anthropic.com/news/claude-opus-4-7), [4.6](https://www.anthropic.com/news/claude-opus-4-6), [4.5](https://www.anthropic.com/news/claude-opus-4-5) |
-| Claude Sonnet 4.5 / 4.6 | 2025-09-29 / 2026-02-17 | 3 / 0.30 / 15 | [4.5](https://www.anthropic.com/news/claude-sonnet-4-5), [4.6](https://www.anthropic.com/news/claude-sonnet-4-6) |
+| Model                       | Effective date                       | Input / cached input / output | Evidence                                                                                                                                                                  |
+| --------------------------- | ------------------------------------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GPT-5.6 Sol                 | 2026-07-09                           | 5 / 0.50 / 30                 | [Launch](https://openai.com/index/gpt-5-6/)                                                                                                                               |
+| GPT-5.6 Sol                 | 2026-08-21                           | 4 / 0.40 / 20                 | [API changelog, Aug 21](https://developers.openai.com/api/docs/changelog), [model](https://developers.openai.com/api/docs/models/gpt-5.6-sol)                             |
+| GPT-5.6 Luna                | 2026-07-09                           | 1 / 0.10 / 6                  | [Launch](https://openai.com/index/gpt-5-6/)                                                                                                                               |
+| GPT-5.6 Luna                | 2026-07-30                           | 0.20 / 0.02 / 1.20            | [Price change](https://openai.com/index/advancing-the-price-performance-frontier-with-gpt-5-6/), [model](https://developers.openai.com/api/docs/models/gpt-5.6-luna)      |
+| GPT-6 Astra                 | 2026-09-03                           | 10 / 1 / 50                   | [API changelog](https://developers.openai.com/api/docs/changelog), [model](https://developers.openai.com/api/docs/models/gpt-6-astra)                                     |
+| GPT-6 Sol                   | 2026-09-22                           | 2 / 0.20 / 10                 | [API changelog, Sep 22](https://developers.openai.com/api/docs/changelog), [model](https://developers.openai.com/api/docs/models/gpt-6-sol)                               |
+| GPT-6 Luna                  | 2026-09-22                           | 0.10 / 0.01 / 0.50            | [API changelog, Sep 22](https://developers.openai.com/api/docs/changelog)                                                                                                 |
+| GPT-6.1 Sol                 | 2026-09-29                           | 2 / 0.10 / 10                 | [API changelog, Sep 29](https://developers.openai.com/api/docs/changelog), [model](https://developers.openai.com/api/docs/models/gpt-6.1-sol)                             |
+| Claude Fable 5              | 2026-06-09; restored 2026-07-01      | 10 / 1 / 50                   | [Announcement, including suspension](https://www.anthropic.com/news/claude-fable-5-mythos-5), [release notes](https://platform.claude.com/docs/en/release-notes/overview) |
+| Claude Opus 4.8             | 2026-05-28                           | 5 / 0.50 / 25                 | [Announcement](https://www.anthropic.com/news/claude-opus-4-8)                                                                                                            |
+| Claude Opus 5               | 2026-07-24                           | 5 / 0.50 / 25                 | [Announcement](https://www.anthropic.com/news/claude-opus-5)                                                                                                              |
+| Claude Opus 4.7 / 4.6 / 4.5 | 2026-04-16 / 2026-02-05 / 2025-11-24 | 5 / 0.50 / 25                 | [4.7](https://www.anthropic.com/news/claude-opus-4-7), [4.6](https://www.anthropic.com/news/claude-opus-4-6), [4.5](https://www.anthropic.com/news/claude-opus-4-5)       |
+| Claude Sonnet 4.5 / 4.6     | 2025-09-29 / 2026-02-17              | 3 / 0.30 / 15                 | [4.5](https://www.anthropic.com/news/claude-sonnet-4-5), [4.6](https://www.anthropic.com/news/claude-sonnet-4-6)                                                          |
 
 Cache policy: [OpenAI](https://developers.openai.com/api/docs/guides/prompt-caching), [Claude](https://platform.claude.com/docs/en/about-claude/pricing). OpenAI cache writes replace the ordinary input rate, at 1.25× input; cached input and writes are subsets of reported input. Claude input, cache read and cache creation are separate. Claude writes cost 1.25× (5m) or 2× (1h) input. Unknown durations stay unavailable.
 
@@ -27,7 +27,6 @@ Claude Opus/Sonnet 4.6 long-context premium was removed [March 13](https://claud
 A new model has one documented initial rate: launch-day API-equivalent estimates use that rate. Dates of actual changes between rates remain unpriced when the exact switch instant is unknown. Sol's promotional rate is confirmed at least through November 21: November 22 onward stays unavailable until evidence extends or replaces that version. Fable's suspended interval is unpriced. GPT-5.3-Codex is retained as an October 5 current snapshot only, pending historical rate evidence.
 
 `codex-auto-review`, unknown aliases, nonstandard tiers/speeds and server tool charges remain unavailable. No inferred subscription billing, regional surcharge, discounts, batch rate or tax. These are standard API-equivalent estimates, not reconstructed invoices.
-
 
 ## Catalog completeness audit — October 5, 2026
 
