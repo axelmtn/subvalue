@@ -246,6 +246,29 @@ p {
   gap: 20px;
   margin-bottom: 22px;
 }
+.overview-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  min-width: 0;
+}
+.selected-period {
+  color: var(--green);
+  font-size: 17px;
+  font-weight: 550;
+  letter-spacing: -0.3px;
+}
+@media (max-width: 760px) {
+  .overview-title {
+    flex-direction: column;
+    align-items: start;
+    gap: 5px;
+  }
+  .selected-period {
+    font-size: 15px;
+  }
+}
 .eyebrow {
   font: 9px var(--mono);
   letter-spacing: 1.7px;
@@ -2174,7 +2197,7 @@ dialog::backdrop {
   }
 }
 .billing-row {
-  grid-template-columns: 100px 145px minmax(0, 1fr);
+  grid-template-columns: 100px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -2193,7 +2216,7 @@ dialog::backdrop {
 .amount-field input[readonly] {
   color: var(--muted);
 }
-.subscription-fields.hidden {
+.billing-amount.hidden {
   display: none;
 }
 .compact-details a {

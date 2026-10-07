@@ -1,6 +1,6 @@
 {
   "name": "@subvalue/cli",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Local, read-only Codex and Claude Code API-equivalent usage dashboard",
   "type": "module",
   "license": "MIT",

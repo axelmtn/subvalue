@@ -572,7 +572,10 @@ function overview() {
   const months = fullCalendarMonths(summary.range),
     showSubs = months !== null && active.length && active.every((p) => p.mode === 'SUBSCRIPTION');
   return /* HTML */ `<div class="page-heading">
-      <div><h1>Overview</h1></div>
+      <div class="overview-title">
+        <h1>Overview</h1>
+        <span class="selected-period" aria-live="polite">${esc(periodLabel())}</span>
+      </div>
       ${refreshButton()}
     </div>
     ${coverage()}
@@ -614,38 +617,40 @@ function receiptPage() {
 }
 function billingFields(p: Provider, firstRun = false) {
   const b = settings.billing[p],
-    plan = subscriptionPlan(p, b.planId);
+    plan = subscriptionPlan(p, b.planId),
+    subscribed = b.mode === 'SUBSCRIPTION',
+    selection = subscribed
+      ? (plan?.id ?? 'custom')
+      : b.mode === 'NO_SUBSCRIPTION' || b.mode === 'API'
+        ? 'none'
+        : '';
   return /* HTML */ `<div class="billing-row">
-    <label class="provider-setting-name" for="mode-${p}">${name(p)}</label
-    ><select
-      id="mode-${p}"
-      name="mode-${p}"
-      data-billing-mode="${p}"
-      ${firstRun ? 'required data-first-run="true"' : ''}
-    >
-      <option value="${firstRun ? '' : 'UNKNOWN'}" ${b.mode === 'UNKNOWN' ? 'selected' : ''}>
-        ${firstRun ? 'Choose usage' : 'Not set'}
-      </option>
-      <option value="SUBSCRIPTION" ${b.mode === 'SUBSCRIPTION' ? 'selected' : ''}>
-        Subscription
-      </option>
-      <option value="API" ${b.mode === 'API' ? 'selected' : ''}>API</option>
-      <option value="MIXED" ${b.mode === 'MIXED' ? 'selected' : ''}>Mixed / not sure</option>
-    </select>
-    <div class="subscription-fields ${b.mode === 'SUBSCRIPTION' ? '' : 'hidden'}" id="amount-${p}">
+    <label class="provider-setting-name" for="plan-${p}">${name(p)}</label>
+    <div class="subscription-fields">
       <label class="sr-only" for="plan-${p}">${name(p)} subscription plan</label
-      ><select id="plan-${p}" name="plan-${p}" data-subscription-plan="${p}">
-        <option value="custom" ${!plan ? 'selected' : ''}>Custom amount</option>
+      ><select
+        id="plan-${p}"
+        name="plan-${p}"
+        data-subscription-plan="${p}"
+        ${firstRun ? 'required data-first-run="true"' : ''}
+      >
+        <option value="" ${selection === '' ? 'selected' : ''}>
+          ${firstRun ? 'Choose subscription' : 'Not set'}
+        </option>
+        <option value="none" ${selection === 'none' ? 'selected' : ''}>No subscription</option>
         ${subscriptionPlans
           .filter((plan) => plan.provider === p)
           .map(
             (option) =>
-              /* HTML */ `<option value="${option.id}" ${plan?.id === option.id ? 'selected' : ''}>
+              /* HTML */ `<option value="${option.id}" ${selection === option.id ? 'selected' : ''}>
                 ${esc(subscriptionPlanLabel(option))}
               </option>`,
           )
-          .join('')}</select
-      ><label class="amount-field"
+          .join('')}
+        <option value="custom" ${selection === 'custom' ? 'selected' : ''}>
+          Custom amount
+        </option></select
+      ><label class="amount-field billing-amount ${subscribed ? '' : 'hidden'}" id="amount-${p}"
         ><span class="sr-only">${name(p)} monthly subscription in USD</span><span>$</span
         ><input
           name="monthly-${p}"
@@ -655,7 +660,8 @@ function billingFields(p: Provider, firstRun = false) {
           step="0.01"
           value="${plan ? plan.monthly.toFixed(2) : (b.monthly ?? '')}"
           ${plan ? 'readonly' : ''}
-          ${firstRun && b.mode === 'SUBSCRIPTION' ? 'required' : ''}
+          ${!subscribed ? 'disabled' : ''}
+          ${firstRun && subscribed ? 'required' : ''}
           placeholder="Amount"
         /><span>/ month</span></label
       >
@@ -754,8 +760,8 @@ function settingsPage() {
             </p>
             <p>
               These are your declarations, not inferred billing history. Amounts are in USD.
-              Comparisons use the full monthly price for full calendar months only. API and mixed
-              usage have no subscription comparison.
+              Comparisons use the full monthly price for full calendar months only. No subscription
+              means no subscription comparison.
             </p>
           </details>
         </section>
@@ -792,7 +798,7 @@ function onboarding() {
     <span class="brand-mark">${productMark}</span
     ><span class="eyebrow">${esc(product.name.toUpperCase())} / FIRST RUN</span>
     <h2 id="onboarding-title">
-      ${onboardingStage === 'found' ? (found.length ? 'Local usage found' : 'No local usage found') : 'How did you use it?'}
+      ${onboardingStage === 'found' ? (found.length ? 'Local usage found' : 'No local usage found') : 'Your subscriptions'}
     </h2>
     ${
       onboardingStage === 'found'
@@ -804,7 +810,7 @@ function onboarding() {
               ${billable
                 .map(
                   (p) =>
-                    /* HTML */ `<h3>How did you use ${name(p.provider)}?</h3>
+                    /* HTML */ `<h3>${name(p.provider)}</h3>
                       ${billingFields(p.provider, true)}`,
                 )
                 .join('')}<button class="button" type="submit">
@@ -842,12 +848,14 @@ function render() {
 function readBilling(form: HTMLFormElement) {
   const data = new FormData(form);
   for (const p of ['codex', 'claude'] as Provider[]) {
-    const mode = data.get(`mode-${p}`);
-    if (mode) {
+    const selection = data.get(`plan-${p}`);
+    if (selection !== null) {
+      const mode =
+        selection === 'none' ? 'NO_SUBSCRIPTION' : selection === '' ? 'UNKNOWN' : 'SUBSCRIPTION';
       const amount = data.get(`monthly-${p}`),
-        plan = subscriptionPlan(p, String(data.get(`plan-${p}`)));
+        plan = subscriptionPlan(p, String(selection));
       settings.billing[p] = {
-        mode: mode as Settings['billing']['codex']['mode'],
+        mode,
         monthly:
           mode === 'SUBSCRIPTION'
             ? (plan?.monthly ?? (amount !== '' && amount !== null ? Number(amount) : null))
@@ -1011,23 +1019,15 @@ function bind() {
     const data = new FormData(e.currentTarget as HTMLFormElement);
     void choosePeriod('month', from, to, String(data.get('month')));
   });
-  document.querySelectorAll<HTMLSelectElement>('[data-billing-mode]').forEach((select) =>
-    select.addEventListener('change', () => {
-      document
-        .querySelector(`#amount-${select.dataset.billingMode}`)
-        ?.classList.toggle('hidden', select.value !== 'SUBSCRIPTION');
-      const amount = document.querySelector<HTMLInputElement>(
-        `[name="monthly-${select.dataset.billingMode}"]`,
-      );
-      if (amount)
-        amount.required = select.dataset.firstRun === 'true' && select.value === 'SUBSCRIPTION';
-    }),
-  );
   document.querySelectorAll<HTMLSelectElement>('[data-subscription-plan]').forEach((select) =>
     select.addEventListener('change', () => {
       const p = select.dataset.subscriptionPlan as Provider,
         plan = subscriptionPlan(p, select.value),
         input = document.querySelector<HTMLInputElement>(`[name="monthly-${p}"]`)!;
+      const subscribed = select.value !== '' && select.value !== 'none';
+      document.querySelector(`#amount-${p}`)?.classList.toggle('hidden', !subscribed);
+      input.disabled = !subscribed;
+      input.required = select.dataset.firstRun === 'true' && subscribed;
       input.readOnly = !!plan;
       if (plan) input.value = plan.monthly.toFixed(2);
     }),

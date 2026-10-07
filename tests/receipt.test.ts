@@ -202,7 +202,7 @@ test('observed comparison preserves unknown amounts and ineligible billing modes
     assert.equal(display.value, null);
     assert.equal(display.roi, null);
   }
-  for (const mode of ['API', 'MIXED', 'UNKNOWN'] as const) {
+  for (const mode of ['NO_SUBSCRIPTION', 'API', 'MIXED', 'UNKNOWN'] as const) {
     settings.billing.codex = { mode, monthly: null };
     const display = comparisonForDisplay(
       summarize([record()], statuses(), settings, range, prices()),
@@ -214,7 +214,7 @@ test('observed comparison preserves unknown amounts and ineligible billing modes
 });
 
 test('receipt multiplier needs a known amount and a positive subscription for all active providers', () => {
-  for (const mode of ['API', 'MIXED', 'UNKNOWN'] as const) {
+  for (const mode of ['NO_SUBSCRIPTION', 'API', 'MIXED', 'UNKNOWN'] as const) {
     const settings = defaultSettings();
     settings.billing.codex = { mode, monthly: null };
     const receipt = receiptModel(summarize([record()], statuses(), settings, range, prices()));

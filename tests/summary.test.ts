@@ -58,15 +58,35 @@ test('pricing coverage is record coverage, never invented historical coverage', 
   assert.equal(s.total.priceCoverage, 1);
   assert.equal(s.historyPartial, true);
 });
-test('API and mixed billing never produce subscription ROI', () => {
-  for (const mode of ['API', 'MIXED'] as const) {
+test('no subscription, API and legacy mixed billing retain usage without subscription ROI', () => {
+  for (const mode of ['NO_SUBSCRIPTION', 'API', 'MIXED'] as const) {
     const settings = defaultSettings();
     settings.billing.codex = { mode, monthly: null };
     const s = summarize([record()], statuses(), settings, range, prices(), true);
+    assert.ok(s.total.apiEquivalent! > 0);
     assert.equal(s.total.comparison.subscription, null);
     assert.equal(s.total.comparison.roi, null);
     assert.equal(s.total.comparison.value, null);
   }
+});
+
+test('a provider without a subscription does not enter the combined subscription comparison', () => {
+  const settings = defaultSettings();
+  settings.billing.codex = { mode: 'SUBSCRIPTION', monthly: 20 };
+  settings.billing.claude = { mode: 'NO_SUBSCRIPTION', monthly: null };
+  const s = summarize(
+    [record(), record('claude', { id: 'claude' })],
+    statuses(),
+    settings,
+    range,
+    prices([price(), price({ provider: 'claude' })]),
+    true,
+  );
+  assert.ok(s.total.apiEquivalent! > 0);
+  assert.equal(s.providers[0].comparison.subscription, 20);
+  assert.equal(s.providers[1].comparison.subscription, null);
+  assert.equal(s.total.comparison.roi, null);
+  assert.equal(s.total.comparison.value, null);
 });
 test('unknown billing stays unknown', () => {
   const s = summarize([record()], statuses(), defaultSettings(), range, prices(), true);

@@ -1,6 +1,7 @@
 export type Provider = 'codex' | 'claude';
 export type Quality = 'HIGH' | 'MEDIUM' | 'LOW' | 'INCOMPLETE';
-export type BillingMode = 'UNKNOWN' | 'SUBSCRIPTION' | 'API' | 'MIXED';
+// API and MIXED remain readable for existing local settings.
+export type BillingMode = 'UNKNOWN' | 'SUBSCRIPTION' | 'NO_SUBSCRIPTION' | 'API' | 'MIXED';
 export interface UsageRecord {
   id: string;
   timestamp: string | null;

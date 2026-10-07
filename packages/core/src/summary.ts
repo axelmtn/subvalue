@@ -205,19 +205,21 @@ export function summarize(
         ? subscriptionForRange(billing.monthly, range)
         : null;
     let comparison = neutral(
-      billing.mode === 'API'
-        ? 'API usage'
-        : billing.mode === 'MIXED'
-          ? 'Mixed billing'
-          : billing.mode === 'UNKNOWN'
-            ? 'Billing not set'
-            : fullCalendarMonths(range) === null
-              ? 'Choose a full month'
-              : subscription === null
-                ? 'Subscription price not set'
-                : !completePricing
-                  ? 'Pricing unavailable'
-                  : 'Partial history',
+      billing.mode === 'NO_SUBSCRIPTION'
+        ? 'No subscription'
+        : billing.mode === 'API'
+          ? 'API usage'
+          : billing.mode === 'MIXED'
+            ? 'Mixed billing'
+            : billing.mode === 'UNKNOWN'
+              ? 'Billing not set'
+              : fullCalendarMonths(range) === null
+                ? 'Choose a full month'
+                : subscription === null
+                  ? 'Subscription price not set'
+                  : !completePricing
+                    ? 'Pricing unavailable'
+                    : 'Partial history',
       subscription,
     );
     if (completePricing && subscription !== null) {
@@ -311,7 +313,7 @@ export function summarize(
   const apiEquivalent = count > 0 && pricedRecords === count ? knownSubtotal : null;
   const subs = active.filter((p) => p.mode === 'SUBSCRIPTION');
   let comparison = neutral(
-    active.some((p) => p.mode === 'API' || p.mode === 'MIXED' || p.mode === 'UNKNOWN')
+    active.some((p) => p.mode !== 'SUBSCRIPTION')
       ? 'Subscription comparison unavailable'
       : 'Partial history',
   );

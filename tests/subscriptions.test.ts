@@ -35,14 +35,26 @@ test('selected subscriptions preserve exact annual equivalents and validate prov
   s.billing.claude.planId = 'chatgpt-plus';
   assert.throws(() => validateSettings(s), /plan/);
 });
-test('manual subscriptions and old settings remain supported; API and mixed have no subscription charge', () => {
+test('manual subscriptions and old settings remain supported; non-subscription modes have no charge', () => {
   const s = defaultSettings();
   s.billing.codex = { mode: 'SUBSCRIPTION', monthly: 173 };
   assert.deepEqual(validateSettings(s).billing.codex, s.billing.codex);
-  for (const mode of ['API', 'MIXED', 'UNKNOWN'] as const) {
+  for (const mode of ['NO_SUBSCRIPTION', 'API', 'MIXED', 'UNKNOWN'] as const) {
     s.billing.codex = { mode, monthly: 200 };
     assert.equal(validateSettings(s).billing.codex.monthly, null);
   }
   s.billing.codex = { mode: 'SUBSCRIPTION', monthly: 20, planId: 'unknown' };
   assert.throws(() => validateSettings(s), /plan/);
+});
+
+test('no subscription is accepted for both providers and clears stale plan amounts', () => {
+  const s = defaultSettings();
+  s.onboarded = true;
+  s.billing.codex = { mode: 'NO_SUBSCRIPTION', monthly: 20, planId: 'chatgpt-plus' };
+  s.billing.claude = { mode: 'NO_SUBSCRIPTION', monthly: 100, planId: 'claude-max-5x' };
+  const saved = validateSettings(s);
+  for (const provider of ['codex', 'claude'] as const)
+    assert.deepEqual(saved.billing[provider], { mode: 'NO_SUBSCRIPTION', monthly: null });
+  assert.equal(saved.onboarded, true);
+  assert.deepEqual(validateSettings(JSON.parse(JSON.stringify(saved))), saved);
 });

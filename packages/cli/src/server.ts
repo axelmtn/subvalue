@@ -25,7 +25,7 @@ const mime: Record<string, string> = {
   '.woff2': 'font/woff2',
   '.txt': 'text/plain; charset=utf-8',
 };
-const billingModes = ['UNKNOWN', 'SUBSCRIPTION', 'API', 'MIXED'] as const;
+const billingModes = ['UNKNOWN', 'SUBSCRIPTION', 'NO_SUBSCRIPTION', 'API', 'MIXED'] as const;
 const isBillingMode = (value: unknown): value is BillingMode =>
   billingModes.some((mode) => mode === value);
 

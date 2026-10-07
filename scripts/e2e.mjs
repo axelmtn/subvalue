@@ -91,11 +91,14 @@ try {
   await page.keyboard.press('Escape');
   assert.ok(await page.locator('#onboarding').isVisible());
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  await page.getByRole('heading', { name: 'How did you use Codex?', exact: true }).waitFor();
-  assert.equal(await page.locator('#onboarding #mode-claude').count(), 0);
+  await page.getByRole('heading', { name: 'Your subscriptions', exact: true }).waitFor();
+  assert.equal(await page.locator('#onboarding #plan-claude').count(), 0);
   await page.getByRole('button', { name: 'Open overview', exact: true }).click();
-  assert.ok(await page.locator('#onboarding').isVisible(), 'Usage mode must be chosen explicitly');
-  await page.locator('#onboarding #mode-codex').selectOption('SUBSCRIPTION');
+  assert.ok(
+    await page.locator('#onboarding').isVisible(),
+    'Subscription must be chosen explicitly',
+  );
+  await page.locator('#onboarding #plan-codex').selectOption('custom');
   await page.getByRole('button', { name: 'Open overview', exact: true }).click();
   assert.ok(
     await page.locator('#onboarding').isVisible(),
@@ -153,6 +156,7 @@ try {
         document.querySelector('.metric.api-metric .metric-detail')?.textContent === expected,
       detail,
     );
+    assert.equal(await page.locator('.selected-period').innerText(), detail);
     assert.equal(await page.locator('.metric').count(), 1);
     assert.doesNotMatch(
       await page.locator('#receipt-canvas').getAttribute('aria-label'),
@@ -207,10 +211,18 @@ try {
     () => document.querySelector('.metric.api-metric .metric-detail')?.textContent === 'May 2026',
   );
   assert.equal(await page.locator('.metric strong').innerText(), 'No data');
+  assert.equal(await page.locator('.selected-period').innerText(), 'May 2026');
+  await page.screenshot({ path: path.join(output, 'selected-month-desktop.png'), fullPage: true });
   await page.getByRole('button', { name: 'Next month', exact: true }).click();
   await page.waitForFunction(
     () => document.querySelector('.metric.api-metric .metric-detail')?.textContent === 'June 2026',
   );
+  assert.equal(await page.locator('.selected-period').innerText(), 'June 2026');
+  await page.setViewportSize({ width: 390, height: 1000 });
+  assert.ok(await page.locator('.selected-period').isVisible());
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  await page.screenshot({ path: path.join(output, 'selected-month-mobile.png'), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole('button', { name: 'Previous month', exact: true }).click();
   await page.waitForFunction(
     () => document.querySelector('.metric.api-metric .metric-detail')?.textContent === 'May 2026',
@@ -353,7 +365,6 @@ try {
   await page.reload();
   await page.locator('#plan-codex').waitFor();
   assert.equal(await page.locator('#plan-codex').inputValue(), 'chatgpt-plus');
-  await page.locator('#mode-claude').selectOption('SUBSCRIPTION');
   await page.locator('#plan-claude').selectOption('claude-pro-annual');
   await page.screenshot({ path: path.join(output, 'billing-plans.png'), fullPage: true });
   await Promise.all([
@@ -365,7 +376,7 @@ try {
   const planSettings = await (await fetch(url + '/api/bootstrap')).json();
   assert.equal(planSettings.settings.billing.claude.monthly, 200 / 12);
   assert.equal(planSettings.settings.billing.claude.planId, 'claude-pro-annual');
-  await page.locator('#mode-claude').selectOption('UNKNOWN');
+  await page.locator('#plan-claude').selectOption('none');
   await page.locator('#plan-codex').selectOption('custom');
   await page.getByRole('spinbutton', { name: 'Codex monthly subscription in USD' }).fill('500');
   await page.getByRole('button', { name: 'Save changes' }).click();
@@ -377,20 +388,34 @@ try {
   await page.getByRole('button', { name: 'Export PNG', exact: true }).click();
   await (await negative).saveAs(path.join(output, 'receipt-negative.png'));
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.locator('#mode-codex').selectOption('API');
+  await page.locator('#plan-codex').selectOption('none');
   assert.equal(await page.locator('#amount-codex').isVisible(), false);
   await page.getByRole('button', { name: 'Save changes' }).click();
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll('.metric').length === 1);
   assert.equal(await page.locator('.metric').count(), 1);
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.locator('#mode-codex').selectOption('MIXED');
-  await page.getByRole('button', { name: 'Save changes' }).click();
-  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  const noSubscriptions = await (await fetch(url + '/api/bootstrap')).json();
+  for (const provider of ['codex', 'claude'])
+    assert.deepEqual(noSubscriptions.settings.billing[provider], {
+      mode: 'NO_SUBSCRIPTION',
+      monthly: null,
+    });
+  // Previously stored mixed billing stays readable, without restoring that UI choice.
+  await fetch(url + '/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Subvalue-Token': initial.token },
+    body: JSON.stringify({
+      ...noSubscriptions.settings,
+      billing: { ...noSubscriptions.settings.billing, codex: { mode: 'MIXED', monthly: null } },
+    }),
+  });
+  await page.reload();
+  await page.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
   assert.equal(await page.locator('.metric').count(), 1);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.locator('#mode-codex').selectOption('SUBSCRIPTION');
-  await page.getByRole('spinbutton', { name: 'Codex monthly subscription in USD' }).fill('200');
+  assert.equal(await page.locator('#plan-codex').inputValue(), '');
+  assert.equal(await page.locator('option[value=MIXED]').count(), 0);
+  await page.locator('#plan-codex').selectOption('chatgpt-pro-200');
   await page.getByRole('button', { name: 'Save changes' }).click();
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   await page.locator('.metric.positive').waitFor();
@@ -649,7 +674,13 @@ try {
   assert.equal(await emptyPage.locator('.metric strong').innerText(), 'No data');
   await emptyPage.close();
   // Older imported usage still gets billing onboarding, even if this month is empty.
-  for (const skip of [false, true]) {
+  for (const scenario of [
+    ['chatgpt-pro-100', 'claude-pro-annual'],
+    ['chatgpt-pro-100', 'none'],
+    ['none', 'claude-pro-annual'],
+    ['none', 'none'],
+    null,
+  ]) {
     const historicalPage = await context.newPage();
     let saved = defaultSettings();
     const historicalSummary = {
@@ -674,23 +705,51 @@ try {
     });
     await historicalPage.goto(url);
     await historicalPage.getByRole('button', { name: 'Continue', exact: true }).click();
-    assert.equal(await historicalPage.locator('#onboarding [data-billing-mode]').count(), 2);
+    assert.equal(await historicalPage.locator('#onboarding [data-subscription-plan]').count(), 2);
+    assert.equal(await historicalPage.locator('#onboarding option[value=none]').count(), 2);
+    assert.equal(await historicalPage.locator('#onboarding option[value=MIXED]').count(), 0);
     assert.equal(await historicalPage.locator('.metric, #receipt-canvas').count(), 0);
-    if (skip) {
+    if (scenario === null) {
       await historicalPage.getByRole('button', { name: 'Set up later', exact: true }).click();
       assert.equal(saved.billing.codex.mode, 'UNKNOWN');
       assert.equal(saved.billing.claude.mode, 'UNKNOWN');
     } else {
-      await historicalPage.locator('#mode-codex').selectOption('SUBSCRIPTION');
-      await historicalPage.locator('#plan-codex').selectOption('chatgpt-pro-100');
-      await historicalPage.locator('#mode-claude').selectOption('SUBSCRIPTION');
-      await historicalPage.locator('#plan-claude').selectOption('claude-pro-annual');
+      await historicalPage.locator('#plan-codex').selectOption(scenario[0]);
+      await historicalPage.locator('#plan-claude').selectOption(scenario[1]);
+      for (const [i, provider] of ['codex', 'claude'].entries()) {
+        const subscribed = scenario[i] !== 'none';
+        assert.equal(await historicalPage.locator(`#amount-${provider}`).isVisible(), subscribed);
+        assert.equal(
+          await historicalPage.locator(`[name=monthly-${provider}]`).isDisabled(),
+          !subscribed,
+        );
+      }
+      if (scenario[0] === 'chatgpt-pro-100' && scenario[1] === 'none') {
+        await historicalPage.setViewportSize({ width: 1440, height: 1000 });
+        await historicalPage.screenshot({
+          path: path.join(output, 'onboarding-no-subscription-desktop.png'),
+          fullPage: true,
+        });
+        await historicalPage.setViewportSize({ width: 390, height: 850 });
+        assert.ok(
+          await historicalPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        );
+        await historicalPage.screenshot({
+          path: path.join(output, 'onboarding-no-subscription-mobile.png'),
+          fullPage: true,
+        });
+      }
       await historicalPage.getByRole('button', { name: 'Open overview', exact: true }).click();
       await historicalPage.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
-      assert.equal(saved.billing.codex.monthly, 100);
-      assert.equal(saved.billing.codex.planId, 'chatgpt-pro-100');
-      assert.equal(saved.billing.claude.monthly, 200 / 12);
-      assert.equal(saved.billing.claude.planId, 'claude-pro-annual');
+      for (const [i, provider] of ['codex', 'claude'].entries()) {
+        if (scenario[i] === 'none') {
+          assert.deepEqual(saved.billing[provider], { mode: 'NO_SUBSCRIPTION', monthly: null });
+        } else {
+          assert.equal(saved.billing[provider].mode, 'SUBSCRIPTION');
+          assert.equal(saved.billing[provider].monthly, provider === 'codex' ? 100 : 200 / 12);
+          assert.equal(saved.billing[provider].planId, scenario[i]);
+        }
+      }
     }
     await historicalPage.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
     await historicalPage.reload();
@@ -799,14 +858,16 @@ try {
           'custom duration arrows',
           'mobile month arrows',
           'first-run onboarding',
+          'direct subscription and no-subscription onboarding for both providers',
+          'visible selected month on desktop and mobile',
           'zero-data onboarding without billing questions',
           'missing data is not zero',
           'period controls',
           'navigation',
           'positive receipt',
           'negative receipt',
-          'API billing',
-          'mixed billing',
+          'no subscription billing',
+          'legacy mixed billing compatibility',
           'official subscription presets and persistence',
           'exact annual plan amount',
           'provider visibility',
