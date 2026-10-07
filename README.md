@@ -109,7 +109,7 @@ Browser validation uses an isolated headless browser with fixture data. Windows 
 
 GitHub Actions validates Windows, Linux, and macOS on both Apple Silicon and Intel. Each runner checks types, lint, build, unit/integration tests, responsive browser pages, receipt PNG export, and the locally packed CLI from a temporary directory outside the checkout. The package requires Node.js 24.13 or newer on each platform.
 
-Static landing output is `apps/web/dist`, suitable for a static host including Vercel. It contains no local API server or user data. Its preview is marked as an example. Public GitHub links remain release placeholders while the repository is private.
+Static landing output is `apps/web/dist`, suitable for a static host including Vercel. It contains no local API server or user data. Its preview is marked as an example. The source repository is public at [github.com/axelmtn/subvalue](https://github.com/axelmtn/subvalue).
 
 ## Package / release
 
@@ -120,4 +120,4 @@ npm pack --workspace @subvalue/cli --ignore-scripts --pack-destination artifacts
 
 Package contents are allowlisted to `dist/`, README, PRE_RELEASE, PRIVACY, and LICENSE. No lifecycle/postinstall scripts or runtime dependencies. Local databases, exports, attachments and test artifacts are ignored by Git and excluded from npm contents.
 
-The initial npm release is published manually from the audited package. The GitHub repository stays private. npm does not support provenance for private source repositories; no provenance attestation is claimed for this release. The future release workflow remains disabled until trusted publishing is configured and `NPM_PUBLISH_ENABLED=true` is set. It uses a protected environment and OIDC rather than a permanent npm token.
+Manual npm releases use the audited package and do not claim a provenance attestation. The source repository is public. The future release workflow remains disabled until trusted publishing is configured and `NPM_PUBLISH_ENABLED=true` is set. It uses a protected environment and OIDC rather than a permanent npm token.
