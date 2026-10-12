@@ -20,7 +20,7 @@ export function withPeriodBilling(
 ): Settings {
   const next = structuredClone(settings),
     exactKey = billingPeriodKey(range),
-    monthly = fullCalendarMonths(range) === 1,
+    monthly = fullCalendarMonths(range) === 1 && range.preset !== 'custom',
     key = monthly ? exactKey.slice(0, 7) : exactKey,
     declarations = monthly ? (next.monthlyBilling ??= {}) : (next.periodBilling ??= {});
   // A rolling range can share dates with a calendar month. Editing that month
@@ -40,15 +40,30 @@ export function billingForSelection(settings: Settings, provider: Provider, rang
   if (exact) return exact;
   if (fullCalendarMonths(range) === 1)
     return billingForMonth(settings, provider, billingPeriodKey(range).slice(0, 7));
+  if (range.preset === 'custom') {
+    const saved = billingForMonth(settings, provider, billingPeriodKey(range).slice(0, 7));
+    // Prefill the historical plan, but never copy one month's payments into a
+    // different selection or treat a suggested amount as a confirmation.
+    const resolved = billingForRange(settings, provider, range),
+      wholeMonths = fullCalendarMonths(range) !== null;
+    return {
+      mode: wholeMonths ? resolved.mode : saved.mode,
+      monthly: saved.monthly,
+      planId: saved.planId,
+      ...(wholeMonths && resolved.apiSpend !== null ? { apiSpend: resolved.apiSpend } : {}),
+    };
+  }
   return billingForMonth({ ...settings, monthlyBilling: undefined }, provider, '');
 }
 
-/** Keep the dashboard action limited to mixed billing or a second provider without a plan. */
+/** Custom dates need explicit expenses; other views retain their existing actions. */
 export function showExpenseAction(
   provider: ProviderSummary,
   providers: ProviderSummary[],
+  range?: Range,
 ): boolean {
   if (!provider.records) return false;
+  if (range?.preset === 'custom') return true;
   if (provider.mode === 'MIXED') return true;
   return (
     (provider.mode === 'API' ||
@@ -76,6 +91,24 @@ export function billingForMonth(settings: Settings, provider: Provider, month: s
 export function billingForRange(settings: Settings, provider: Provider, range: Range) {
   const count = fullCalendarMonths(range);
   const exact = settings.periodBilling?.[billingPeriodKey(range)]?.[provider];
+  if (
+    exact &&
+    (count !== null || range.preset === 'custom') &&
+    (count === null || exact.subscriptionSpend !== undefined)
+  ) {
+    const mode = exact.mode === 'UNKNOWN' || exact.mode === 'NO_SUBSCRIPTION' ? 'API' : exact.mode,
+      subscription = mode === 'API' ? 0 : (exact.subscriptionSpend ?? null),
+      apiSpend = mode === 'SUBSCRIPTION' ? 0 : (exact.apiSpend ?? null),
+      paid = subscription !== null && apiSpend !== null ? subscription + apiSpend : null;
+    return {
+      mode,
+      monthly: exact.monthly,
+      subscription,
+      apiSpend,
+      paid,
+      needsBilling: paid === null,
+    };
+  }
   const start = new Date(range.from);
   const first =
     range.calendarFrom?.slice(0, 7) ??
@@ -107,6 +140,6 @@ export function billingForRange(settings: Settings, provider: Provider, range: R
     subscription,
     apiSpend,
     paid: subscription !== null && apiSpend !== null ? subscription + apiSpend : null,
-    needsBilling: !subscriptionKnown || !apiKnown,
+    needsBilling: (range.preset === 'custom' && count === null) || !subscriptionKnown || !apiKnown,
   };
 }

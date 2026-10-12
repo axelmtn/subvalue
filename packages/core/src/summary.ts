@@ -207,7 +207,7 @@ export function summarize(
     const { subscription, apiSpend, paid } = billing;
     let comparison: Comparison = {
       ...neutral(
-        fullCalendarMonths(range) === null
+        fullCalendarMonths(range) === null && range.preset !== 'custom'
           ? 'Choose a full month'
           : paid === null
             ? 'Expenses not set'

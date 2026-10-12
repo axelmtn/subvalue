@@ -365,7 +365,7 @@ test('historical month selection respects calendar boundaries, leap years and ye
   for (const invalid of ['2026-00', '2026-13', '2026-1', '2026-05-01', '2026-05junk', ''])
     assert.throws(() => dateRange('month', new Date(), undefined, undefined, invalid));
 });
-test('custom ranges compare only complete calendar months at full price', () => {
+test('unconfirmed custom ranges compare only complete calendar months at full price', () => {
   const now = new Date(2026, 9, 6);
   for (const [from, to, months] of [
     ['2024-02-01', '2024-02-29', 1],

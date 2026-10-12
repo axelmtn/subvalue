@@ -442,6 +442,93 @@ test('server never accepts arbitrary filesystem paths', async () => {
     await s.close();
   }
 });
+
+test('confirmed custom payments persist across relaunch and cancellation without changing other dates', async () => {
+  fs.mkdirSync('artifacts', { recursive: true });
+  const directory = fs.mkdtempSync(path.resolve('artifacts/custom-expenses-'));
+  let store = new Store(directory);
+  const settings = defaultSettings();
+  settings.onboarded = true;
+  settings.billing.codex = { mode: 'API', monthly: null };
+  settings.monthlyBilling = {
+    '2026-09': { codex: { mode: 'SUBSCRIPTION', monthly: 100, planId: 'chatgpt-pro-100' } },
+  };
+  const key = '2026-09-15:2026-10-14';
+  settings.periodBilling = {
+    [key]: {
+      codex: {
+        mode: 'MIXED',
+        monthly: 100,
+        planId: 'chatgpt-pro-100',
+        subscriptionSpend: 100,
+        apiSpend: 30,
+      },
+      claude: { mode: 'API', monthly: null, apiSpend: 20 },
+    },
+  };
+  for (const [provider, model] of [
+    ['codex', 'gpt-5.6-sol'],
+    ['claude', 'claude-sonnet-5'],
+  ] as const)
+    store.put(
+      record(provider, { id: provider, model_raw: model, timestamp: '2026-10-01T12:00:00Z' }),
+      'synthetic',
+    );
+  try {
+    for (let launch = 0; launch < 2; launch++) {
+      const running = await startServer({
+        port: 0,
+        publicDirectory: 'packages/cli/dist/public',
+        store,
+      });
+      try {
+        const bootstrap = await (await fetch(running.url + '/api/bootstrap')).json();
+        if (launch === 1) {
+          assert.deepEqual(bootstrap.settings.periodBilling, settings.periodBilling);
+          settings.billing.codex = { mode: 'SUBSCRIPTION', monthly: 200 };
+          settings.receiptTheme = 'light';
+        }
+        const saved = await fetch(running.url + '/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Subvalue-Token': bootstrap.token },
+          body: JSON.stringify(settings),
+        });
+        assert.equal(saved.status, 200);
+        const summary = await (
+          await fetch(running.url + '/api/summary?period=custom&from=2026-09-15&to=2026-10-14')
+        ).json();
+        assert.equal(summary.total.records, 2);
+        assert.equal(summary.total.comparison.subscription, 100);
+        assert.equal(summary.total.comparison.apiSpend, 50);
+        assert.equal(summary.total.comparison.paid, 150);
+        assert.equal(summary.total.comparison.roi, summary.total.apiEquivalent / 150);
+        assert.ok(!JSON.stringify(summary).includes('fixture-ref'));
+        const adjacent = await (
+          await fetch(running.url + '/api/summary?period=custom&from=2026-09-16&to=2026-10-15')
+        ).json();
+        assert.ok(
+          adjacent.providers.every(
+            (provider: { comparison: { paid: number | null } }) =>
+              provider.comparison.paid === null,
+          ),
+        );
+        assert.equal(adjacent.total.comparison.roi, null);
+        const monthly = await (
+          await fetch(running.url + '/api/summary?period=month&month=2026-10')
+        ).json();
+        assert.equal(monthly.providers[0].comparison.subscription, launch === 0 ? 0 : 200);
+        assert.equal(store.records().length, 2);
+        assert.deepEqual(store.settings().monthlyBilling, settings.monthlyBilling);
+      } finally {
+        await running.close();
+      }
+      store.close();
+      if (launch === 0) store = new Store(directory);
+    }
+  } finally {
+    if (store.db.isOpen) store.close();
+  }
+});
 test('static routes cannot expose databases, transcripts or junction targets', async () => {
   fs.mkdirSync('artifacts', { recursive: true });
   const directory = fs.mkdtempSync(path.resolve('artifacts/http-safety-'));

@@ -1023,6 +1023,24 @@ try {
       verified_at: '2026-10-01T00:00:00.000Z',
     })),
   };
+  // A billing cycle crossing two calendar months, with synthetic usage only.
+  for (const [provider, timestamp, usd] of [
+    ['codex', '2026-05-20T12:00:00Z', 400],
+    ['codex', '2026-06-10T12:00:00Z', 250],
+    ['claude', '2026-06-10T12:00:00Z', 50],
+  ])
+    expenseRows.push({
+      ...baseRecord(provider, 'synthetic', provider + timestamp),
+      id: provider + timestamp,
+      timestamp,
+      model_raw: 'test-model',
+      input_tokens: 0,
+      cached_input_tokens: 0,
+      cache_creation_tokens: 0,
+      output_tokens: usd * 100000,
+      total_tokens: usd * 100000,
+      quality: 'HIGH',
+    });
   await expensePage.route('**/api/bootstrap', (route) =>
     route.fulfill({
       json: {
@@ -1041,7 +1059,9 @@ try {
         expenseRows,
         [],
         expenseSettings,
-        dateRange('month', new Date(2026, 7, 15), undefined, undefined, expenseSelectedMonth),
+        query.get('period') === 'custom'
+          ? dateRange('custom', new Date(2026, 7, 15), query.get('from'), query.get('to'))
+          : dateRange('month', new Date(2026, 7, 15), undefined, undefined, expenseSelectedMonth),
         expenseCatalog,
         true,
       ),
@@ -1224,6 +1244,208 @@ try {
   await expensePage.reload();
   await expensePage.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
   assert.equal(await expensePage.locator('[data-period-billing]').count(), 0);
+
+  // Custom payments are explicit totals, including a cancelled subscription and API usage.
+  expenseSettings.billing.codex = {
+    mode: 'SUBSCRIPTION',
+    monthly: 100,
+    planId: 'chatgpt-pro-100',
+  };
+  expenseSettings.billing.claude = { mode: 'API', monthly: null };
+  await expensePage.reload();
+  await expensePage.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
+  const selectCycle = async () => {
+    await expensePage.getByRole('button', { name: 'Custom', exact: true }).click();
+    await expensePage.locator('#custom-range [name=from]').fill('2026-05-15');
+    await expensePage.locator('#custom-range [name=to]').fill('2026-06-14');
+    await expensePage
+      .locator('#custom-range')
+      .getByRole('button', { name: 'Apply', exact: true })
+      .click();
+    await expensePage.waitForFunction(
+      () => document.querySelector('.selected-period')?.textContent === '2026-05-15 — 2026-06-14',
+    );
+  };
+  await selectCycle();
+  await expensePage.setViewportSize({ width: 1440, height: 1100 });
+  assert.equal(
+    await expensePage.locator('.metric').count(),
+    1,
+    'No suggested payment enters a comparison',
+  );
+  assert.equal(await expensePage.locator('[data-period-billing]').count(), 2);
+  const openExpenses = async (provider) =>
+    expensePage.locator(`[data-expense-toggle=${provider}]`).click();
+  const confirmExpenses = async (provider) => {
+    await expensePage
+      .locator(`[data-period-billing=${provider}]`)
+      .getByRole('button', {
+        name: 'Confirm for this period',
+        exact: true,
+      })
+      .click();
+    await expensePage.waitForFunction(
+      (provider) =>
+        document
+          .querySelector(`[data-expense-toggle=${provider}]`)
+          ?.textContent.includes('Edit expenses') &&
+        !document.querySelector(`#card-expenses-${provider}`)?.matches(':popover-open'),
+      provider,
+    );
+  };
+  const customChartTop = await expensePage
+    .locator('.chart')
+    .evaluate((el) => el.getBoundingClientRect().top);
+  await openExpenses('codex');
+  assert.equal(await expensePage.locator('#card-plan-codex').inputValue(), 'chatgpt-pro-100');
+  assert.equal(await expensePage.locator('[name=subscription-spend-codex]').inputValue(), '100.00');
+  assert.equal(
+    await expensePage.locator('.chart').evaluate((el) => el.getBoundingClientRect().top),
+    customChartTop,
+  );
+  await expensePage.screenshot({
+    path: path.join(output, 'custom-expenses-desktop.png'),
+    fullPage: true,
+  });
+  await expensePage.locator('#card-plan-codex').selectOption('none');
+  assert.equal(
+    await expensePage.locator('[name=api-spend-codex]').evaluate((input) => input.checkValidity()),
+    false,
+    'Switching to API requires an actual payment',
+  );
+  await expensePage.locator('#card-plan-codex').selectOption('chatgpt-pro-100');
+  await confirmExpenses('codex');
+  assert.match(
+    await expensePage.locator('.metric').nth(1).innerText(),
+    /Total paid[\s\S]*\$100.00[\s\S]*Codex/,
+  );
+  assert.match(await expensePage.locator('.metric').nth(3).innerText(), /6.50/);
+  assert.equal(expenseSettings.periodBilling['2026-05-15:2026-06-14'].codex.subscriptionSpend, 100);
+  assert.equal(expenseSettings.monthlyBilling['2026-05'], undefined);
+
+  // A supplier without a subscription can confirm API expenses or a former plan.
+  await openExpenses('claude');
+  assert.equal(await expensePage.locator('#card-plan-claude').inputValue(), 'none');
+  await expensePage.locator('#card-plan-claude').selectOption('claude-pro-monthly');
+  assert.equal(await expensePage.locator('[name=subscription-spend-claude]').inputValue(), '20.00');
+  await expensePage.locator('#card-plan-claude').selectOption('none');
+  await expensePage.locator('[name=api-spend-claude]').fill('20');
+  await confirmExpenses('claude');
+  assert.match(await expensePage.locator('.metric').nth(1).innerText(), /\$120.00/);
+  assert.match(await expensePage.locator('.metric').nth(3).innerText(), /5.83/);
+
+  await openExpenses('codex');
+  await expensePage.locator('[name=mixed-codex]').check();
+  assert.equal(await expensePage.locator('[name=api-spend-codex]').inputValue(), '0');
+  await expensePage.locator('[name=subscription-spend-codex]').fill('100');
+  await expensePage.locator('#card-plan-codex').selectOption('chatgpt-pro-200');
+  assert.equal(
+    await expensePage.locator('[name=subscription-spend-codex]').inputValue(),
+    '100',
+    'Explicit payments do not change when the suggested plan changes',
+  );
+  await expensePage.locator('#card-plan-codex').selectOption('chatgpt-pro-100');
+  await expensePage.locator('[name=api-spend-codex]').fill('30');
+  await expensePage.setViewportSize({ width: 390, height: 850 });
+  // Reopen to reposition the floating form after the viewport changes.
+  await expensePage.keyboard.press('Escape');
+  await openExpenses('codex');
+  for (const width of [320, 390]) {
+    await expensePage.setViewportSize({ width, height: 850 });
+    await expensePage.keyboard.press('Escape');
+    await openExpenses('codex');
+    const box = await expensePage.locator('#card-expenses-codex').boundingBox();
+    assert.ok(box.x >= 0 && box.x + box.width <= width && box.y >= 0 && box.y + box.height <= 850);
+    assert.ok(await expensePage.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  }
+  await expensePage.screenshot({ path: path.join(output, 'custom-expenses-mobile.png') });
+  await confirmExpenses('codex');
+  assert.match(await expensePage.locator('.metric').nth(1).innerText(), /\$150.00/);
+  assert.match(await expensePage.locator('.metric').nth(3).innerText(), /4.67/);
+  assert.match(
+    await expensePage.locator('#receipt-canvas').getAttribute('aria-label'),
+    /Subscription Paid \$100.00[\s\S]*API Paid \$50.00[\s\S]*Total Paid \$150.00[\s\S]*Total Saved \+\$550.00[\s\S]*VALUE MULTIPLE 4.67/,
+  );
+  await expensePage.screenshot({
+    path: path.join(output, 'custom-comparison-mobile.png'),
+    fullPage: true,
+  });
+  await expensePage.setViewportSize({ width: 1440, height: 1100 });
+  await expensePage.screenshot({
+    path: path.join(output, 'custom-comparison-desktop.png'),
+    fullPage: true,
+  });
+  const customDownload = expensePage.waitForEvent('download');
+  await expensePage.getByRole('button', { name: 'Export PNG', exact: true }).click();
+  const customPng = path.join(output, 'custom-receipt.png');
+  await (await customDownload).saveAs(customPng);
+  // PNG encoders may produce different compressed bytes for identical pixels.
+  const customPixels = await expensePage
+    .locator('#receipt-canvas')
+    .evaluate(async (canvas, base64) => {
+      const image = await createImageBitmap(
+        new Blob([Uint8Array.from(atob(base64), (value) => value.charCodeAt(0))], {
+          type: 'image/png',
+        }),
+      );
+      const copy = document.createElement('canvas');
+      copy.width = image.width;
+      copy.height = image.height;
+      copy.getContext('2d').drawImage(image, 0, 0);
+      if (canvas.width !== copy.width || canvas.height !== copy.height) return false;
+      const preview = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+      const exported = copy.getContext('2d').getImageData(0, 0, copy.width, copy.height).data;
+      return preview.every((value, index) => value === exported[index]);
+    }, fs.readFileSync(customPng).toString('base64'));
+  assert.ok(customPixels, 'Custom receipt export matches preview pixels');
+  assert.equal(fs.readFileSync(customPng).readUInt32BE(16), 2160);
+
+  // Cancelling the current plan does not erase earlier confirmed payments.
+  expenseSettings.billing.codex = { mode: 'API', monthly: null };
+  await expensePage.reload();
+  await expensePage.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
+  await selectCycle();
+  assert.match(await expensePage.locator('.metric').nth(1).innerText(), /\$150.00/);
+  assert.match(await expensePage.locator('.metric').nth(3).innerText(), /4.67/);
+  await expensePage.getByRole('button', { name: 'Custom', exact: true }).click();
+  await expensePage.locator('#custom-range [name=from]').fill('2026-05-16');
+  await expensePage.locator('#custom-range [name=to]').fill('2026-06-15');
+  await expensePage
+    .locator('#custom-range')
+    .getByRole('button', { name: 'Apply', exact: true })
+    .click();
+  await expensePage.waitForFunction(() => document.querySelectorAll('.metric').length === 1);
+  // Adding API usage must not replace a historical two-month subscription total
+  // with twice the first month's rate when the registered plan changed.
+  expenseSettings.monthlyBilling['2026-05'] = {
+    codex: { mode: 'SUBSCRIPTION', monthly: 20, planId: 'chatgpt-plus' },
+  };
+  expenseSettings.monthlyBilling['2026-06'] = {
+    codex: { mode: 'SUBSCRIPTION', monthly: 100, planId: 'chatgpt-pro-100' },
+  };
+  await expensePage.reload();
+  await expensePage.getByRole('heading', { name: 'Overview', exact: true }).waitFor();
+  await expensePage.getByRole('button', { name: 'Custom', exact: true }).click();
+  await expensePage.locator('#custom-range [name=from]').fill('2026-05-01');
+  await expensePage.locator('#custom-range [name=to]').fill('2026-06-30');
+  await expensePage
+    .locator('#custom-range')
+    .getByRole('button', { name: 'Apply', exact: true })
+    .click();
+  await expensePage.waitForFunction(
+    () => document.querySelector('.selected-period')?.textContent === '2026-05-01 — 2026-06-30',
+  );
+  await openExpenses('codex');
+  assert.equal(await expensePage.locator('[name=subscription-spend-codex]').inputValue(), '120.00');
+  await expensePage.locator('[name=mixed-codex]').check();
+  assert.equal(
+    await expensePage.locator('[name=subscription-spend-codex]').inputValue(),
+    '120.00',
+    'Mixed mode preserves historical subscription totals',
+  );
+  await expensePage.locator('[name=api-spend-codex]').fill('10');
+  await confirmExpenses('codex');
+  assert.equal(expenseSettings.periodBilling['2026-05-01:2026-06-30'].codex.subscriptionSpend, 120);
   await expensePage.close();
   assert.deepEqual(errors, [], 'No browser errors');
   assert.deepEqual(external, [], 'No external application requests');
@@ -1250,6 +1472,9 @@ try {
           'historical comparisons scoped to subscribed providers only',
           'conditional provider expense actions',
           'month-specific API and mixed billing, save rollback and reload',
+          'custom cross-month payments, cancelled subscriptions and scoped comparisons',
+          'custom expense forms fit without moving the chart, on desktop and mobile',
+          'custom receipt PNG exactly matches preview',
           'zero-data onboarding without billing questions',
           'missing data is not zero',
           'period controls',

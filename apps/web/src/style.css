@@ -2319,7 +2319,8 @@ dialog {
   color: var(--muted);
   font-size: 12px;
 }
-.api-spend-field {
+.api-spend-field,
+.subscription-spend-field {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2427,11 +2428,21 @@ dialog {
   width: fit-content;
   max-width: 100%;
 }
-.provider-expenses-form .api-spend-field .amount-field {
+.provider-expenses-form .api-spend-field .amount-field,
+.provider-expenses-form .subscription-spend-field .amount-field {
   width: 130px;
 }
 .provider-expenses-form .expense-actions {
   margin-top: 14px;
+}
+.custom-period-expenses .expense-actions {
+  flex-wrap: wrap;
+}
+.custom-period-expenses .expense-actions small {
+  flex-basis: 100%;
+}
+.custom-period-expenses .expense-actions .button {
+  margin-left: auto;
 }
 .provider-expenses-form small,
 .expense-period {

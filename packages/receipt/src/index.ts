@@ -47,7 +47,7 @@ export interface DisplayComparison extends Comparison {
 export function comparisonForDisplay(s: ReceiptInput): DisplayComparison {
   const comparison = s.total.comparison,
     amount = s.total.apiEquivalent ?? s.total.knownSubtotal;
-  if (fullCalendarMonths(s.range) === null)
+  if (fullCalendarMonths(s.range) === null && s.range.preset !== 'custom')
     return {
       ...comparison,
       subscription: null,
@@ -148,10 +148,21 @@ export function receiptModel(s: ReceiptInput, generatedAt = new Date()): Receipt
         right: comp.apiEquivalent === null ? '—' : money(comp.apiEquivalent),
       },
     );
+  const custom = s.range.preset === 'custom';
   if (comp.subscription != null && comp.subscription > 0)
-    rows.push({ left: 'Subscription Cost', right: money(comp.subscription) });
+    rows.push({
+      left: custom
+        ? (comp.apiSpend ?? 0) > 0
+          ? 'Subscription Paid'
+          : 'Total Paid'
+        : 'Subscription Cost',
+      right: money(comp.subscription),
+    });
   if (comp.apiSpend != null && (comp.apiSpend > 0 || comp.subscription === 0)) {
-    rows.push({ left: 'API Paid', right: money(comp.apiSpend) });
+    rows.push({
+      left: custom && comp.subscription === 0 ? 'Total Paid' : 'API Paid',
+      right: money(comp.apiSpend),
+    });
     if (comp.subscription != null && comp.subscription > 0)
       rows.push({ left: 'Total Paid', right: money(comp.paid ?? null), strong: true });
   }

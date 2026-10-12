@@ -5,8 +5,10 @@ export interface Billing {
   mode: BillingMode;
   monthly: number | null;
   planId?: string | null;
-  /** Actual API spend for one calendar month, never inferred from token prices. */
+  /** Actual API spend for one calendar month or exact date selection. */
   apiSpend?: number | null;
+  /** Confirmed subscription payment for an exact selection, never a monthly rate. */
+  subscriptionSpend?: number | null;
 }
 export interface UsageRecord {
   id: string;

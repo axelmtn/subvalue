@@ -32,18 +32,29 @@ const billingModes = ['UNKNOWN', 'SUBSCRIPTION', 'NO_SUBSCRIPTION', 'API', 'MIXE
 const isBillingMode = (value: unknown): value is BillingMode =>
   billingModes.some((mode) => mode === value);
 
-function validateBilling(provider: Provider, value: unknown, monthly = false): Billing {
+function validateBilling(
+  provider: Provider,
+  value: unknown,
+  scope: 'default' | 'month' | 'period' = 'default',
+): Billing {
   if (!isRecord(value) || !isBillingMode(value.mode)) throw new Error('Invalid billing settings');
   const amount = (n: unknown) =>
     n === null || (typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 1000000);
   if (!amount(value.monthly)) throw new Error('Invalid subscription amount');
   if (value.apiSpend !== undefined && !amount(value.apiSpend)) throw new Error('Invalid API spend');
-  if (!monthly && value.apiSpend != null) throw new Error('API spend belongs to a specific month');
+  if (scope === 'default' && value.apiSpend != null)
+    throw new Error('API spend belongs to a specific period');
+  if (value.subscriptionSpend !== undefined) {
+    if (scope !== 'period') throw new Error('Subscription spend belongs to an exact period');
+    if (!amount(value.subscriptionSpend)) throw new Error('Invalid subscription spend');
+  }
   const planId = value.planId;
   if (planId != null && typeof planId !== 'string') throw new Error('Invalid subscription plan');
   const plan = planId == null ? undefined : subscriptionPlan(provider, planId);
   if (planId != null && !plan) throw new Error('Invalid subscription plan');
   const subscribed = value.mode === 'SUBSCRIPTION' || value.mode === 'MIXED';
+  if (!subscribed && value.subscriptionSpend != null)
+    throw new Error('Subscription spend requires a subscription');
   if (
     subscribed &&
     plan &&
@@ -54,9 +65,12 @@ function validateBilling(provider: Provider, value: unknown, monthly = false): B
     mode: value.mode,
     monthly: subscribed ? (plan?.monthly ?? (value.monthly as number | null)) : null,
     ...(subscribed && planId !== undefined ? { planId: plan?.id ?? null } : {}),
-    ...(monthly &&
+    ...(scope !== 'default' &&
     (value.mode === 'API' || value.mode === 'MIXED' || value.mode === 'NO_SUBSCRIPTION')
       ? { apiSpend: (value.apiSpend as number | null | undefined) ?? null }
+      : {}),
+    ...(scope === 'period' && subscribed && value.subscriptionSpend !== undefined
+      ? { subscriptionSpend: value.subscriptionSpend as number | null }
       : {}),
   };
 }
@@ -91,7 +105,7 @@ export function validateSettings(value: unknown): Settings {
       const entry: Partial<Record<Provider, Billing>> = {};
       for (const provider of ['codex', 'claude'] as const)
         if (providers[provider] !== undefined)
-          entry[provider] = validateBilling(provider, providers[provider], true);
+          entry[provider] = validateBilling(provider, providers[provider], 'month');
       settings.monthlyBilling[month] = entry;
     }
   }
@@ -113,7 +127,7 @@ export function validateSettings(value: unknown): Settings {
       const entry: Partial<Record<Provider, Billing>> = {};
       for (const provider of ['codex', 'claude'] as const)
         if (providers[provider] !== undefined)
-          entry[provider] = validateBilling(provider, providers[provider], true);
+          entry[provider] = validateBilling(provider, providers[provider], 'period');
       settings.periodBilling[key] = entry;
     }
   }

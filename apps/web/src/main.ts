@@ -9,6 +9,7 @@ import type {
 } from '../../../packages/core/src/types.ts';
 import {
   billingForSelection,
+  billingForRange,
   withPeriodBilling,
   showExpenseAction,
 } from '../../../packages/core/src/billing.ts';
@@ -534,13 +535,13 @@ function providerCards() {
               </div>
             </div>
             ${
-              showExpenseAction(p, summary.providers)
-                ? `<button type="button" class="provider-expense-toggle" data-expense-toggle="${p.provider}" aria-controls="card-expenses-${p.provider}" aria-expanded="false"><span>Categorize expenses for this period</span> ${icon('next')}</button>
+              showExpenseAction(p, summary.providers, summary.range)
+                ? `<button type="button" class="provider-expense-toggle" data-expense-toggle="${p.provider}" aria-controls="card-expenses-${p.provider}" aria-expanded="false"><span>${summary.range.preset === 'custom' ? (p.comparison.paid == null ? 'Confirm expenses for this period' : 'Edit expenses for this period') : 'Categorize expenses for this period'}</span> ${icon('next')}</button>
                 <div id="card-expenses-${p.provider}" class="provider-expenses-popover" popover aria-label="${name(p.provider)} expenses">
                 <div class="expenses-heading"><h2>${name(p.provider)} · Expenses</h2><button type="button" class="text-button" popovertarget="card-expenses-${p.provider}" popovertargetaction="hide" aria-label="Close expenses">×</button></div>
-                <form class="provider-expenses-form" data-period-billing="${p.provider}">
+                <form class="provider-expenses-form ${summary.range.preset === 'custom' ? 'custom-period-expenses' : ''}" data-period-billing="${p.provider}">
               ${billingFields(p.provider, true, billingForSelection(settings, p.provider, summary.range), true, 'card-')}
-              <div class="expense-actions"><small>${esc(periodLabel())}</small><button class="button small" type="submit" ${expensesSaving ? 'disabled' : ''}>Save</button></div>
+              <div class="expense-actions"><small>${esc(periodLabel())}</small><button class="button small" type="submit" ${expensesSaving ? 'disabled' : ''}>${summary.range.preset === 'custom' ? 'Confirm for this period' : 'Save'}</button></div>
               <p class="billing-error" role="alert" hidden></p></form></div>`
                 : ''
             }
@@ -593,7 +594,10 @@ function overview() {
     c = comparisonForDisplay(summary);
   const active = summary.providers.filter((p) => p.records);
   const months = fullCalendarMonths(summary.range),
-    showSubs = months !== null && active.length && (c.paid != null || c.scope.length > 0),
+    showSubs =
+      (months !== null || summary.range.preset === 'custom') &&
+      active.length &&
+      (c.paid != null || c.scope.length > 0),
     scopeLabel = c.scope.map(name).join(' + '),
     first = summary.providers
       .map((p) => p.first)
@@ -622,7 +626,7 @@ function overview() {
     <div class="overview-layout">
       <div class="overview-main">
         <div class="metrics ${showSubs ? '' : 'single'}">
-          ${metric('API equivalent', t.apiEquivalent === null ? (t.knownSubtotal !== null ? money(t.knownSubtotal) : t.records ? '—' : 'No data') : money(t.apiEquivalent), periodLabel(), 'api-metric')}${showSubs ? metric(c.apiSpend ? 'You paid' : c.subscription === 0 ? 'API paid' : 'Subscription', money(c.paid ?? c.subscription), [scopeLabel, months === 1 ? 'Full month' : `${months} full months`].filter(Boolean).join(' · ')) : ''}${showSubs ? metric(summary.historyPartial ? 'Observed value' : 'Value', c.value === null ? '—' : money(c.value, true), [scopeLabel, c.value === null ? 'Comparison unavailable' : summary.historyPartial ? 'Partial history' : ''].filter(Boolean).join(' · '), c.value !== null ? (c.value >= 0 ? 'positive' : 'negative') : '') : ''}${showSubs ? metric('Value multiple', c.roi === null ? '—' : `${c.roi.toFixed(2)}<span class="multiply">×</span>`, [scopeLabel, c.breakEven ? `Break-even ${new Date(c.breakEven + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : c.roi === null ? 'Unavailable' : t.apiEquivalent === null ? 'Priced portion' : ''].filter(Boolean).join(' · ')) : ''}
+          ${metric('API equivalent', t.apiEquivalent === null ? (t.knownSubtotal !== null ? money(t.knownSubtotal) : t.records ? '—' : 'No data') : money(t.apiEquivalent), periodLabel(), 'api-metric')}${showSubs ? metric(summary.range.preset === 'custom' ? 'Total paid' : c.apiSpend ? 'You paid' : c.subscription === 0 ? 'API paid' : 'Subscription', money(c.paid ?? c.subscription), [scopeLabel, summary.range.preset === 'custom' ? 'Selected period' : months === 1 ? 'Full month' : `${months} full months`].filter(Boolean).join(' · ')) : ''}${showSubs ? metric(summary.historyPartial ? 'Observed value' : 'Value', c.value === null ? '—' : money(c.value, true), [scopeLabel, c.value === null ? 'Comparison unavailable' : summary.historyPartial ? 'Partial history' : ''].filter(Boolean).join(' · '), c.value !== null ? (c.value >= 0 ? 'positive' : 'negative') : '') : ''}${showSubs ? metric('Value multiple', c.roi === null ? '—' : `${c.roi.toFixed(2)}<span class="multiply">×</span>`, [scopeLabel, c.breakEven ? `Break-even ${new Date(c.breakEven + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : c.roi === null ? 'Unavailable' : t.apiEquivalent === null ? 'Priced portion' : ''].filter(Boolean).join(' · ')) : ''}
         </div>
         ${providerCards()}${chart()}
         <div class="overview-bottom">
@@ -681,7 +685,12 @@ function billingFields(
       : b.mode === 'NO_SUBSCRIPTION' || b.mode === 'API'
         ? 'none'
         : '';
-  const api = !subscribed || b.mode === 'MIXED';
+  const api = !subscribed || b.mode === 'MIXED',
+    periodAmounts = expenses && summary.range.preset === 'custom',
+    suggestedSubscription =
+      b.subscriptionSpend ??
+      billingForRange(settings, p, summary.range).subscription ??
+      (b.monthly === null ? null : b.monthly * (fullCalendarMonths(summary.range) ?? 1));
   return /* HTML */ `<div class="billing-row" data-billing-provider="${p}">
     <label class="provider-setting-name" for="${prefix}plan-${p}">${name(p)}</label>
     <div class="subscription-fields">
@@ -736,7 +745,8 @@ function billingFields(
           ${subscribed ? '' : 'disabled'}
         />Subscription + API</label
       >
-      ${expenses ? `<label class="api-spend-field ${api ? '' : 'hidden'}"><span>API paid</span><div class="amount-field"><span>$</span><input name="api-spend-${p}" type="number" min="0" max="1000000" step="0.01" value="${b.apiSpend ?? (b.mode === 'MIXED' ? 0 : '')}" ${api ? '' : 'disabled'} placeholder="Not set" aria-label="${name(p)} API paid in USD"/></div></label>` : ''}
+      ${periodAmounts ? `<label class="subscription-spend-field ${subscribed ? '' : 'hidden'}"><span data-subscription-spend-label>${b.mode === 'MIXED' ? 'Subscription paid' : 'Total paid'}</span><div class="amount-field"><span>$</span><input name="subscription-spend-${p}" type="number" min="0" max="1000000" step="0.01" value="${suggestedSubscription === null ? '' : suggestedSubscription.toFixed(2)}" data-suggested="${b.subscriptionSpend == null}" data-months="${fullCalendarMonths(summary.range) ?? 1}" ${subscribed ? 'required' : 'disabled'} aria-label="${name(p)} subscription paid for this period in USD"/></div></label>` : ''}
+      ${expenses ? `<label class="api-spend-field ${api ? '' : 'hidden'}"><span>${periodAmounts && !subscribed ? 'Total paid · API' : 'API paid'}</span><div class="amount-field"><span>$</span><input name="api-spend-${p}" type="number" min="0" max="1000000" step="0.01" value="${b.apiSpend ?? (b.mode === 'MIXED' ? 0 : '')}" ${api ? (periodAmounts ? 'required' : '') : 'disabled'} placeholder="Not set" aria-label="${name(p)} API paid in USD"/></div></label>` : ''}
     </div>
   </div>`;
 }
@@ -749,7 +759,7 @@ function expenseDialog() {
       <p class="expense-period">${esc(periodLabel())}</p>
       ${billingFields(expenseProvider, true, billing, true, 'period-')}
       <p class="expense-note">This period only · USD</p><p id="expense-error" role="alert" hidden></p>
-      <div class="expense-actions"><button type="button" class="text-button" id="reset-expenses">Use default</button><button class="button" type="submit">Save</button></div>
+      <div class="expense-actions"><button type="button" class="text-button" id="reset-expenses">Use default</button><button class="button" type="submit">${summary.range.preset === 'custom' ? 'Confirm for this period' : 'Save'}</button></div>
     </form></dialog>`;
 }
 function settingsPage() {
@@ -827,7 +837,7 @@ function settingsPage() {
             .map(
               (p) =>
                 billingFields(p) +
-                `<button type="button" class="text-button settings-expenses" data-expenses="${p}">${name(p)} · Monthly expenses</button>`,
+                `<button type="button" class="text-button settings-expenses" data-expenses="${p}">${name(p)} · ${summary.range.preset === 'custom' ? 'Period' : 'Monthly'} expenses</button>`,
             )
             .join('')}
           <details class="compact-details">
@@ -848,8 +858,9 @@ function settingsPage() {
             </p>
             <p>
               These are your declarations, not inferred billing history. Amounts are in USD.
-              Comparisons use full calendar months. API spend belongs to the selected month; missing
-              amounts stay unknown. Value multiple is API equivalent divided by total paid.
+              Calendar months use their recorded expenses. Custom dates use confirmed payments for
+              that selection, without prorating. Missing amounts stay unknown. Value multiple is API
+              equivalent divided by total paid.
             </p>
           </details>
         </section>
@@ -949,13 +960,17 @@ function billingFromForm(form: HTMLFormElement, p: Provider): Billing | null {
     mode = subscribed ? (data.has(`mixed-${p}`) ? 'MIXED' : 'SUBSCRIPTION') : 'API',
     plan = subscriptionPlan(p, String(selection)),
     amount = data.get(`monthly-${p}`),
-    api = data.get(`api-spend-${p}`);
+    api = data.get(`api-spend-${p}`),
+    subscriptionSpend = data.get(`subscription-spend-${p}`);
   return {
     mode,
     monthly: subscribed
       ? (plan?.monthly ?? (amount !== '' && amount !== null ? Number(amount) : null))
       : null,
     ...(subscribed ? { planId: plan?.id ?? null } : {}),
+    ...(subscribed && subscriptionSpend !== null
+      ? { subscriptionSpend: subscriptionSpend === '' ? null : Number(subscriptionSpend) }
+      : {}),
     ...(mode !== 'SUBSCRIPTION'
       ? { apiSpend: api !== '' && api !== null ? Number(api) : null }
       : {}),
@@ -1127,7 +1142,7 @@ function bind() {
     const data = new FormData(e.currentTarget as HTMLFormElement);
     void choosePeriod('month', from, to, String(data.get('month')));
   });
-  const updateBillingFields = (row: HTMLElement) => {
+  const updateBillingFields = (row: HTMLElement, updateSuggestion = false) => {
     const select = row.querySelector<HTMLSelectElement>('[data-subscription-plan]')!;
     const p = select.dataset.subscriptionPlan as Provider,
       plan = subscriptionPlan(p, select.value),
@@ -1147,11 +1162,37 @@ function bind() {
       apiInput.disabled = !api;
       if (mixed.checked && subscribed && apiInput.value === '') apiInput.value = '0';
     }
+    const periodInput = row.querySelector<HTMLInputElement>(`[name="subscription-spend-${p}"]`);
+    if (periodInput) {
+      if (apiInput) apiInput.required = api;
+      row.querySelector('.subscription-spend-field')?.classList.toggle('hidden', !subscribed);
+      periodInput.disabled = !subscribed;
+      periodInput.required = subscribed;
+      if (subscribed && updateSuggestion && periodInput.dataset.suggested === 'true')
+        periodInput.value =
+          input.value === ''
+            ? ''
+            : (Number(input.value) * Number(periodInput.dataset.months)).toFixed(2);
+      row.querySelector('[data-subscription-spend-label]')!.textContent = mixed.checked
+        ? 'Subscription paid'
+        : 'Total paid';
+      const apiLabel = row.querySelector('.api-spend-field > span');
+      if (apiLabel) apiLabel.textContent = subscribed ? 'API paid' : 'Total paid · API';
+    }
   };
   document.querySelectorAll<HTMLElement>('[data-billing-provider]').forEach((row) => {
     row
       .querySelectorAll('select, [data-mixed-billing]')
-      .forEach((field) => field.addEventListener('change', () => updateBillingFields(row)));
+      .forEach((field) =>
+        field.addEventListener('change', () => updateBillingFields(row, field.matches('select'))),
+      );
+    row
+      .querySelector('[name^="monthly-"]')
+      ?.addEventListener('input', () => updateBillingFields(row, true));
+    const periodInput = row.querySelector<HTMLInputElement>('[name^="subscription-spend-"]');
+    periodInput?.addEventListener('input', () => {
+      periodInput.dataset.suggested = 'false';
+    });
   });
   document.querySelectorAll<HTMLButtonElement>('[data-expenses]').forEach((button) =>
     button.addEventListener('click', () => {
