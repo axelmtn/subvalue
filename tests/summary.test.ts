@@ -10,6 +10,63 @@ import { defaultSettings } from '../packages/core/src/types.ts';
 import { receiptModel } from '../packages/receipt/src/index.ts';
 import { record, price, prices, statuses } from './helpers.ts';
 const range = dateRange('month', new Date(2026, 9, 4, 12));
+
+test('a selected period spanning the Sonnet reduction sums event-date tariffs, including receipt totals', () => {
+  const usage = (id: string, timestamp: string, cached: number) =>
+    record('claude', {
+      id,
+      timestamp,
+      model_raw: 'claude-sonnet-5-5',
+      input_tokens: 0,
+      output_tokens: 0,
+      cached_input_tokens: cached,
+      total_tokens: cached,
+    });
+  const records = [
+    usage('before', '2026-10-06T12:00:00.000Z', 100000),
+    usage('after', '2026-10-07T00:00:00.000Z', 300000),
+  ];
+  const s = summarize(records, statuses(), defaultSettings(), range);
+  assert.equal(s.total.apiEquivalent, 0.05); // $0.02 at the old rate + $0.03 at the new rate.
+  assert.equal(s.providers.find((p) => p.provider === 'claude')?.apiEquivalent, 0.05);
+  assert.deepEqual(
+    s.daily.map((d) => d.claude),
+    [0.02, 0.03],
+  );
+  assert.equal(receiptModel(s).rows.find((r) => r.left === 'Total API Equivalent')?.right, '$0.05');
+  const historical = summarize(records, statuses(), defaultSettings(), {
+    from: '2026-10-01T00:00:00.000Z',
+    until: '2026-10-07T00:00:00.000Z',
+    label: 'Before price reduction',
+  });
+  assert.equal(historical.total.apiEquivalent, 0.02);
+  records.push(usage('change-day', '2026-10-07T12:00:00.000Z', 100000));
+  const complete = summarize(records, statuses(), defaultSettings(), range);
+  assert.ok(Math.abs(complete.total.apiEquivalent! - 0.06) < 1e-12);
+  assert.equal(complete.total.priceCoverage, 1);
+  assert.equal(
+    receiptModel(complete).rows.find((r) => r.left === 'Total API Equivalent')?.right,
+    '$0.06',
+  );
+});
+
+test('Haiku prompt-length bands apply per request rather than to aggregated period tokens', () => {
+  const records = [99999, 100000, 100001].map((input_tokens) =>
+    record('claude', {
+      id: `haiku-${input_tokens}`,
+      timestamp: '2026-10-08T12:00:00.000Z',
+      model_raw: 'claude-haiku-5-5',
+      input_tokens,
+      cached_input_tokens: 0,
+      output_tokens: 0,
+      total_tokens: input_tokens,
+    }),
+  );
+  const s = summarize(records, statuses(), defaultSettings(), range);
+  const expected = (99999 * 0.1 + 100000 * 0.1 + 100001 * 0.5) / 1e6;
+  assert.ok(Math.abs(s.total.apiEquivalent! - expected) < 1e-12);
+  assert.equal(s.total.pricedRecords, 3);
+});
 test('missing records are NO DATA, not a zero-dollar total', () => {
   const s = summarize([], statuses(), defaultSettings(), range, prices());
   assert.equal(s.total.apiEquivalent, null);

@@ -130,12 +130,17 @@ test('Luna July 30 price cut is versioned', () => {
   assert.equal(priceRecord(publicRecord('gpt-5.6-luna', '2026-07-20')).usd, 11);
   assert.equal(priceRecord(publicRecord('gpt-5.6-luna', '2026-08-01')).usd, 2.2);
 });
-test('calendar-dated price transition never invents an exact UTC instant', () => {
-  assert.equal(
-    priceRecord(publicRecord('gpt-5.6-sol', '2026-08-21')).reason,
-    'price-transition-day-uncertain',
-  );
-  assert.equal(priceRecord(publicRecord('gpt-5.6-luna', '2026-07-30')).usd, null);
+test('calendar-dated changes apply the new tariff throughout the announced day', () => {
+  for (const time of ['00:00:00.000', '12:00:00.000', '23:59:59.999']) {
+    for (const [model, day, expected] of [
+      ['gpt-5.6-sol', '2026-08-21', 38],
+      ['gpt-5.6-luna', '2026-07-30', 2.2],
+    ] as const) {
+      const r = publicRecord(model, day);
+      r.timestamp = `${day}T${time}Z`;
+      assert.equal(priceRecord(r).usd, expected);
+    }
+  }
 });
 test('promotional prices are not extrapolated beyond confirmed duration', () => {
   assert.equal(
@@ -236,14 +241,12 @@ test('documented initial GPT-6 Sol rate prices launch-day estimates without back
     'historical-price-unavailable',
   );
 });
-test('Terra historical reduction and real transition days are preserved', () => {
+test('Terra reduction and Claude context changes apply from their announced dates', () => {
   assert.equal(priceRecord(publicRecord('gpt-5.6-terra', '2026-07-20')).usd, 27.5);
   assert.equal(priceRecord(publicRecord('gpt-5.6-terra', '2026-08-01')).usd, 22);
-  assert.equal(
-    priceRecord(publicRecord('gpt-5.6-terra', '2026-07-30')).reason,
-    'price-transition-day-uncertain',
-  );
-  assert.equal(priceRecord(publicRecord('claude-opus-4-6', '2026-03-13', 'claude')).usd, null);
+  assert.equal(priceRecord(publicRecord('gpt-5.6-terra', '2026-07-30')).usd, 22);
+  assert.equal(priceRecord(publicRecord('claude-opus-4-6', '2026-03-13', 'claude')).usd, 30);
+  assert.equal(priceRecord(publicRecord('claude-sonnet-4-6', '2026-03-13', 'claude')).usd, 18);
 });
 test('every model in the verified official standard text/code table has its exact rates', () => {
   const evidence = JSON.parse(
@@ -304,7 +307,7 @@ test('only documented model aliases resolve, including Claude Haiku', () => {
   assert.equal(priceRecord(publicRecord('gpt-5.6', '2026-10-05')).canonical, 'gpt-5.6-sol');
   assert.equal(priceRecord(publicRecord('gpt-5.3-codex-spark', '2026-10-05')).usd, null);
 });
-test('all currently listed Claude models have verified model-specific cache tariffs', () => {
+test('the October 5 Claude tariff snapshot keeps its model-specific cache prices', () => {
   const rows: [string, number, number, number][] = [
     ['claude-fable-5-1', 10, 0.25, 50],
     ['claude-opus-5-5', 4, 0.2, 20],
@@ -337,6 +340,153 @@ test('all currently listed Claude models have verified model-specific cache tari
     assert.equal(version.cache_write_5m, input * 1.25, model);
     assert.equal(version.cache_write_1h, input * 2, model);
   }
+});
+
+test('archived tariff intervals and rates remain available after catalog updates', () => {
+  const directory = new URL('./fixtures/pricing/', import.meta.url);
+  const snapshots = fs.readdirSync(directory).filter((name) => /^history-.*\.json$/.test(name));
+  assert.ok(snapshots.includes('history-2026-10-05.json'));
+  assert.ok(snapshots.includes('history-2026-10-12.json'));
+  for (const snapshot of snapshots) {
+    const history = JSON.parse(fs.readFileSync(new URL(snapshot, directory), 'utf8'));
+    const through = new Date(Date.parse(history.checked_through) + 1).toISOString();
+    assert.ok(history.prices.length > 0, snapshot);
+    if (snapshot === 'history-2026-10-05.json') assert.equal(history.prices.length, 76);
+    for (const archived of history.prices) {
+      const label = `${archived.provider}/${archived.model}/${archived.effective_from}`;
+      const retained = catalog.prices.find(
+        (p) =>
+          p.provider === archived.provider &&
+          p.model === archived.model &&
+          p.effective_from === archived.effective_from,
+      );
+      assert.ok(retained, `Historical tariff removed: ${label}`);
+      const oldEnd = archived.effective_until ?? through;
+      const protectedEnd = oldEnd < through ? oldEnd : through;
+      assert.ok(
+        !retained.effective_until || retained.effective_until >= protectedEnd,
+        `Historical interval shortened: ${label}`,
+      );
+      for (const key of [
+        'input',
+        'cached_input',
+        'cache_write',
+        'cache_write_5m',
+        'cache_write_1h',
+        'output',
+        'context_threshold',
+        'long_context',
+        'max_verified_context',
+      ] as const)
+        assert.deepEqual(retained[key], archived[key], `${label}/${key}`);
+    }
+  }
+});
+
+test('catalog intervals retain valid dates and adjacent price changes have no unpriced day', () => {
+  for (const p of catalog.prices) {
+    assert.ok(Number.isFinite(Date.parse(p.effective_from)), p.model);
+    if (p.effective_until) assert.ok(Number.isFinite(Date.parse(p.effective_until)), p.model);
+    assert.ok(!p.effective_until || p.effective_until > p.effective_from, p.model);
+    assert.equal(p.uncertain_days?.length ?? 0, 0, p.model);
+    const others = catalog.prices.filter(
+      (other) => other !== p && other.provider === p.provider && other.model === p.model,
+    );
+    for (const other of others) {
+      if (p.effective_until === other.effective_from) {
+        const r = record(p.provider, {
+          model_raw: p.model,
+          timestamp: other.effective_from,
+          cached_input_tokens: 0,
+        });
+        const result = priceRecord(r);
+        assert.equal(result.effectiveFrom, other.effective_from, p.model);
+        assert.notEqual(result.usd, null, p.model);
+        r.timestamp = new Date(Date.parse(other.effective_from) - 1).toISOString();
+        assert.equal(priceRecord(r).effectiveFrom, p.effective_from, p.model);
+      }
+    }
+  }
+});
+
+test('Sonnet 5.5 cache reads use the old and new rates at the event date', () => {
+  const r = record('claude', {
+    model_raw: 'claude-sonnet-5-5',
+    input_tokens: 0,
+    output_tokens: 0,
+    cached_input_tokens: 1000000,
+    total_tokens: 1000000,
+    timestamp: '2026-10-06T23:59:59.999Z',
+  });
+  assert.equal(priceRecord(r).usd, 0.2);
+  assert.equal(priceRecord(r).effectiveFrom, '2026-09-28T00:00:00.000Z');
+  r.timestamp = '2026-10-08T00:00:00.000Z';
+  assert.equal(priceRecord(r).usd, 0.1);
+  assert.equal(priceRecord(r).effectiveFrom, '2026-10-07T00:00:00.000Z');
+  for (const time of ['00:00:00.000', '12:00:00.000', '23:59:59.999']) {
+    r.timestamp = `2026-10-07T${time}Z`;
+    assert.equal(priceRecord(r).usd, 0.1);
+    assert.equal(priceRecord(r).effectiveFrom, '2026-10-07T00:00:00.000Z');
+  }
+});
+
+test('Sonnet 5.5 keeps input, output and cache-write prices across the cache-read reduction', () => {
+  for (const [day, read] of [
+    ['2026-10-06', 0.2],
+    ['2026-10-08', 0.1],
+  ] as const) {
+    const r = record('claude', {
+      model_raw: 'claude-sonnet-5-5',
+      timestamp: `${day}T12:00:00.000Z`,
+      cache_creation_tokens: 10,
+      cache_creation_5m_tokens: 6,
+      cache_creation_1h_tokens: 4,
+    });
+    assert.equal(priceRecord(r).usd, (100 * 2 + 20 * read + 10 * 10 + 6 * 2.5 + 4 * 4) / 1e6);
+  }
+});
+
+test('Haiku 5.5 is mapped exactly and never priced before its launch', () => {
+  const r = record('claude', {
+    model_raw: 'claude-haiku-5-5',
+    timestamp: '2026-10-07T12:00:00.000Z',
+  });
+  const priced = priceRecord(r);
+  assert.equal(priced.canonical, 'claude-haiku-5-5');
+  assert.equal(priced.mapping?.confidence, 'HIGH');
+  assert.equal(priced.usd, (100 * 0.1 + 20 * 0.01 + 10 * 0.5) / 1e6);
+  r.timestamp = '2026-10-06T23:59:59.999Z';
+  assert.equal(priceRecord(r).reason, 'historical-price-unavailable');
+  r.model_raw = 'claude-haiku-5-5-latest';
+  assert.equal(priceRecord(r).reason, 'unresolved-model');
+});
+
+test('Haiku 5.5 threshold includes cache reads and writes and applies all long-context prices', () => {
+  for (const input of [59999, 60000, 60001]) {
+    const r = record('claude', {
+      model_raw: 'claude-haiku-5-5',
+      timestamp: '2026-10-08T12:00:00.000Z',
+      input_tokens: input,
+      cached_input_tokens: 30000,
+      cache_creation_tokens: 10000,
+      cache_creation_5m_tokens: 6000,
+      cache_creation_1h_tokens: 4000,
+      output_tokens: 1000,
+      total_tokens: input + 41000,
+    });
+    const expected =
+      input <= 60000
+        ? (input * 0.1 + 30000 * 0.01 + 6000 * 0.125 + 4000 * 0.2 + 1000 * 0.5) / 1e6
+        : (input * 0.5 + 30000 * 0.05 + 6000 * 0.625 + 4000 * 1 + 1000 * 2.5) / 1e6;
+    assert.ok(Math.abs(priceRecord(r).usd! - expected) < 1e-12, `Input ${input}`);
+  }
+  const incomplete = record('claude', {
+    model_raw: 'claude-haiku-5-5',
+    timestamp: '2026-10-08T12:00:00.000Z',
+    input_tokens: 100001,
+    cache_creation_tokens: 10,
+  });
+  assert.equal(priceRecord(incomplete).reason, 'cache-duration-price-unavailable');
 });
 test('retired Claude models have bounded historical availability and no fabricated Haiku history', () => {
   for (const [model, retired, input, output] of [

@@ -18,6 +18,8 @@ export interface PriceVersion {
     input: number;
     cached_input: number | null;
     cache_write: number | null;
+    cache_write_5m?: number | null;
+    cache_write_1h?: number | null;
     output: number;
   };
   sources?: string[];
@@ -36,6 +38,7 @@ export interface Catalog {
   prices: PriceVersion[];
 }
 const verified = '2026-10-05T00:00:00.000Z';
+const updated = '2026-10-12T00:00:00.000Z';
 const openai = 'https://developers.openai.com/api/docs/pricing',
   anthropic = 'https://platform.claude.com/docs/en/about-claude/pricing';
 const date = (day: string) => day + 'T00:00:00.000Z';
@@ -48,7 +51,6 @@ function claude(
   output: number,
   until: string | null = null,
   max?: number,
-  transition = false,
 ): PriceVersion {
   return {
     provider: 'claude',
@@ -64,7 +66,6 @@ function claude(
     source: anthropic,
     sources: [anthropic, claudeChanges],
     verified_at: verified,
-    uncertain_days: [...(transition ? [start] : []), ...(until ? [until] : [])],
     max_verified_context: max,
   };
 }
@@ -75,7 +76,6 @@ function codex(
   cached: number,
   output: number,
   until: string | null = null,
-  transition = false,
 ): PriceVersion {
   return {
     provider: 'codex',
@@ -98,7 +98,6 @@ function codex(
       cache_write: input * 2.5,
       output: output * 1.5,
     },
-    uncertain_days: [...(transition ? [start] : []), ...(until ? [until] : [])],
   };
 }
 const codexModels = [
@@ -140,10 +139,10 @@ const mappings = (models: string[], source: string) =>
       { canonical, confidence: 'HIGH' as const, source, verified_at: verified },
     ]),
   );
-// A newly launched model has one documented initial rate: use it for API-equivalent
-// estimates on its launch day. Actual changes between rates remain uncertain that day.
+// Preserve every historical rate. Date-only changes take effect at 00:00 UTC on
+// the announced day; this is our day-level estimate convention, not an invoice timestamp.
 export const catalog: Catalog = {
-  version: '2026-10-05.2',
+  version: '2026-10-12.1',
   mappings: {
     codex: {
       ...mappings(codexModels, changes),
@@ -159,15 +158,23 @@ export const catalog: Catalog = {
         ]),
       ),
     },
-    claude: mappings(claudeModels, claudeChanges),
+    claude: {
+      ...mappings(claudeModels, claudeChanges),
+      'claude-haiku-5-5': {
+        canonical: 'claude-haiku-5-5',
+        confidence: 'HIGH',
+        source: 'https://platform.claude.com/docs/en/models/haiku-5-5/overview',
+        verified_at: updated,
+      },
+    },
   },
   prices: [
     codex('gpt-5.6-sol', '2026-07-09', 5, 0.5, 30, '2026-08-21'),
-    codex('gpt-5.6-sol', '2026-08-21', 4, 0.4, 20, '2026-11-22', true), // Promotion confirmed at least through Nov 21. No invented post-promotion rate.
+    codex('gpt-5.6-sol', '2026-08-21', 4, 0.4, 20, '2026-11-22'), // Promotion confirmed at least through Nov 21. No invented post-promotion rate.
     codex('gpt-5.6-luna', '2026-07-09', 1, 0.1, 6, '2026-07-30'),
-    codex('gpt-5.6-luna', '2026-07-30', 0.2, 0.02, 1.2, null, true),
+    codex('gpt-5.6-luna', '2026-07-30', 0.2, 0.02, 1.2),
     codex('gpt-5.6-terra', '2026-07-09', 2.5, 0.25, 15, '2026-07-30'),
-    codex('gpt-5.6-terra', '2026-07-30', 2, 0.2, 12, null, true),
+    codex('gpt-5.6-terra', '2026-07-30', 2, 0.2, 12),
     codex('gpt-6-astra', '2026-09-03', 10, 1, 50),
     codex('gpt-6-sol', '2026-09-22', 2, 0.2, 10),
     codex('gpt-6-luna', '2026-09-22', 0.1, 0.01, 0.5),
@@ -195,19 +202,43 @@ export const catalog: Catalog = {
     // Long-context premium removal is dated March 13; preceding >200k requests
     // stay unavailable until their historical premium can be verified.
     claude('claude-opus-4-6', '2026-02-05', 5, 25, '2026-03-13', 200000),
-    claude('claude-opus-4-6', '2026-03-13', 5, 25, null, undefined, true),
+    claude('claude-opus-4-6', '2026-03-13', 5, 25),
     claude('claude-opus-4-5-20251101', '2025-11-24', 5, 25, null, 200000),
     claude('claude-sonnet-4-5-20250929', '2025-09-29', 3, 15, null, 200000),
     claude('claude-sonnet-4-6', '2026-02-17', 3, 15, '2026-03-13', 200000),
-    claude('claude-sonnet-4-6', '2026-03-13', 3, 15, null, undefined, true),
+    claude('claude-sonnet-4-6', '2026-03-13', 3, 15),
     claude('claude-sonnet-5', '2026-06-30', 2, 10),
-    claude('claude-sonnet-5-5', '2026-09-28', 2, 10),
+    // Keep the launch tariff; apply the cache-read reduction from October 7.
+    claude('claude-sonnet-5-5', '2026-09-28', 2, 10, '2026-10-07'),
+    {
+      ...claude('claude-sonnet-5-5', '2026-10-07', 2, 10),
+      cached_input: 0.1,
+      verified_at: updated,
+    },
     { ...claude('claude-opus-5-5', '2026-09-22', 4, 20), cached_input: 0.2 },
     { ...claude('claude-fable-5-1', '2026-09-01', 10, 50), cached_input: 0.25 },
     { ...claude('claude-mythos-5-1', '2026-09-01', 10, 50), cached_input: 0.25 },
     claude('claude-mythos-5', '2026-06-09', 10, 50, '2026-06-12'),
     claude('claude-mythos-5', '2026-07-01', 10, 50),
     claude('claude-haiku-4-5-20251001', '2025-10-15', 1, 5, null, 200000),
+    {
+      ...claude('claude-haiku-5-5', '2026-10-07', 0.1, 0.5),
+      context_threshold: 100000,
+      long_context: {
+        input: 0.5,
+        cached_input: 0.05,
+        cache_write: null,
+        cache_write_5m: 0.625,
+        cache_write_1h: 1,
+        output: 2.5,
+      },
+      sources: [
+        anthropic,
+        claudeChanges,
+        'https://platform.claude.com/docs/en/models/haiku-5-5/overview',
+      ],
+      verified_at: updated,
+    },
     {
       ...claude('claude-opus-4-1-20250805', '2025-08-05', 15, 75, '2026-08-05', 200000),
       sources: [

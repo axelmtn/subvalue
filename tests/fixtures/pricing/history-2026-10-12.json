@@ -1,0 +1,39 @@
+{
+  "version": "2026-10-12.1",
+  "checked_through": "2026-10-12T23:59:59.999Z",
+  "prices": [
+    {
+      "provider": "claude",
+      "model": "claude-sonnet-5-5",
+      "effective_from": "2026-10-07T00:00:00.000Z",
+      "effective_until": null,
+      "input": 2,
+      "cached_input": 0.1,
+      "cache_write": null,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 4,
+      "output": 10
+    },
+    {
+      "provider": "claude",
+      "model": "claude-haiku-5-5",
+      "effective_from": "2026-10-07T00:00:00.000Z",
+      "effective_until": null,
+      "input": 0.1,
+      "cached_input": 0.01,
+      "cache_write": null,
+      "cache_write_5m": 0.125,
+      "cache_write_1h": 0.2,
+      "output": 0.5,
+      "context_threshold": 100000,
+      "long_context": {
+        "input": 0.5,
+        "cached_input": 0.05,
+        "cache_write": null,
+        "cache_write_5m": 0.625,
+        "cache_write_1h": 1,
+        "output": 2.5
+      }
+    }
+  ]
+}
